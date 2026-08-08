@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rubrictrace"
+version = "0.1.0"
+description = "Offline audits for LLM-as-judge result logs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [{name = "Arman Zareian"}]
+keywords = ["llm", "evaluation", "judge", "rubric", "audit", "ci"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Quality Assurance",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/armanzareian/rubrictrace"
+Repository = "https://github.com/armanzareian/rubrictrace"
+Issues = "https://github.com/armanzareian/rubrictrace/issues"
+Security = "https://github.com/armanzareian/rubrictrace/security/policy"
+
+[project.scripts]
+rubrictrace = "rubrictrace.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rubrictrace = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/rubrictrace", "tests"]

@@ -1,0 +1,8 @@
+{
+  "fail_on": "high",
+  "score_delta": 1.5,
+  "position_delta": 1.0,
+  "decision_threshold": 3.0,
+  "require_evidence": true,
+  "require_rationale": true
+}

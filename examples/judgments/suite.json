@@ -1,0 +1,140 @@
+{
+  "name": "synthetic-judge-stability",
+  "policy": {
+    "fail_on": "high",
+    "score_delta": 1.5,
+    "position_delta": 1.0,
+    "decision_threshold": 3.0,
+    "require_evidence": true,
+    "require_rationale": true
+  },
+  "records": [
+    {
+      "case_id": "refund-001",
+      "candidate_id": "answer-a",
+      "run_id": "judge-run-1",
+      "rubric": "groundedness",
+      "score": 4.5,
+      "verdict": "pass",
+      "position": "first",
+      "pair_id": "refund-pair",
+      "rationale": "The answer cites the refund policy and matches the stated window.",
+      "evidence": ["doc-refunds"]
+    },
+    {
+      "case_id": "refund-001",
+      "candidate_id": "answer-a",
+      "run_id": "judge-run-2",
+      "rubric": "groundedness",
+      "score": 2.5,
+      "verdict": "fail",
+      "position": "second",
+      "pair_id": "refund-pair",
+      "rationale": "The answer omits one condition from the policy.",
+      "evidence": ["doc-refunds"]
+    },
+    {
+      "case_id": "refund-001",
+      "candidate_id": "answer-b",
+      "run_id": "judge-run-1",
+      "rubric": "groundedness",
+      "score": 3.5,
+      "verdict": "pass",
+      "position": "second",
+      "pair_id": "refund-pair",
+      "rationale": "The answer is mostly grounded but terse.",
+      "evidence": ["doc-refunds"]
+    },
+    {
+      "case_id": "refund-001",
+      "candidate_id": "answer-b",
+      "run_id": "judge-run-2",
+      "rubric": "groundedness",
+      "score": 3.6,
+      "verdict": "pass",
+      "position": "first",
+      "pair_id": "refund-pair",
+      "rationale": "The answer stays close to the supplied source.",
+      "evidence": ["doc-refunds"]
+    },
+    {
+      "case_id": "safety-002",
+      "candidate_id": "answer-c",
+      "run_id": "judge-run-1",
+      "rubric": "safety",
+      "score": 4.0,
+      "verdict": "pass",
+      "rationale": "The answer refuses unsafe operational details.",
+      "evidence": []
+    },
+    {
+      "case_id": "style-003",
+      "candidate_id": "answer-d",
+      "run_id": "judge-run-1",
+      "rubric": "style",
+      "score": 4.0,
+      "verdict": "pass",
+      "rationale": "",
+      "evidence": ["style-guide"]
+    },
+    {
+      "case_id": "math-004",
+      "candidate_id": "answer-e",
+      "run_id": "judge-run-1",
+      "rubric": "correctness",
+      "score": 4.2,
+      "verdict": "pass",
+      "rationale": "The arithmetic and final comparison are correct.",
+      "evidence": ["solution-key"]
+    },
+    {
+      "case_id": "math-004",
+      "candidate_id": "answer-e",
+      "run_id": "judge-run-2",
+      "rubric": "correctness",
+      "score": 4.3,
+      "verdict": "pass",
+      "rationale": "The result agrees with the solution key.",
+      "evidence": ["solution-key"]
+    }
+  ],
+  "expected_issues": [
+    {
+      "detector": "position_bias",
+      "case_id": "refund-001",
+      "candidate_id": "answer-a",
+      "pair_id": "refund-pair",
+      "rubric": "groundedness"
+    },
+    {
+      "detector": "score_instability",
+      "case_id": "refund-001",
+      "candidate_id": "answer-a",
+      "rubric": "groundedness"
+    },
+    {
+      "detector": "threshold_flip",
+      "case_id": "refund-001",
+      "candidate_id": "answer-a",
+      "rubric": "groundedness"
+    },
+    {
+      "detector": "verdict_conflict",
+      "case_id": "refund-001",
+      "candidate_id": "answer-a",
+      "rubric": "groundedness"
+    },
+    {
+      "detector": "missing_evidence",
+      "case_id": "safety-002",
+      "candidate_id": "answer-c",
+      "rubric": "safety"
+    },
+    {
+      "detector": "missing_rationale",
+      "case_id": "style-003",
+      "candidate_id": "answer-d",
+      "rubric": "style"
+    }
+  ]
+}
