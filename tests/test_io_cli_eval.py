@@ -9,7 +9,8 @@ from pathlib import Path
 
 from rubrictrace.evaluation import evaluate_suite
 from rubrictrace.io import InputError, load_policy, load_records
-from rubrictrace.models import Policy
+from rubrictrace.models import Policy, RubricThresholds
+from rubrictrace.scanner import audit_records
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,6 +40,15 @@ class IoCliEvaluationTests(unittest.TestCase):
                         "decision_threshold": 4.0,
                         "require_evidence": False,
                         "require_rationale": True,
+                        "enabled_detectors": ["score_instability", "position_bias"],
+                        "severity_overrides": {"position_bias": "high"},
+                        "rubric_thresholds": {
+                            "preference": {
+                                "position_delta": 0.25,
+                                "decision_threshold": 3.5,
+                            }
+                        },
+                        "suppressions": ["0123456789abcdef"],
                     }
                 ),
                 encoding="utf-8",
@@ -54,9 +64,33 @@ class IoCliEvaluationTests(unittest.TestCase):
                 decision_threshold=4.0,
                 require_evidence=False,
                 require_rationale=True,
+                enabled_detectors=("score_instability", "position_bias"),
+                severity_overrides={"position_bias": "high"},
+                rubric_thresholds={
+                    "preference": RubricThresholds(
+                        position_delta=0.25,
+                        decision_threshold=3.5,
+                    )
+                },
+                suppressions=("0123456789abcdef",),
             ),
             policy,
         )
+
+    def test_policy_loading_rejects_nested_error_without_echoing_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "policy.json"
+            path.write_text(
+                json.dumps({"rubric_thresholds": {"groundedness": {"score_delta": "secret"}}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(InputError) as caught:
+                load_policy(path)
+
+        message = str(caught.exception)
+        self.assertIn("rubric_thresholds.groundedness.score_delta", message)
+        self.assertNotIn("secret", message)
 
     def test_cli_audit_json_and_exit_code(self) -> None:
         command = [
@@ -114,6 +148,47 @@ class IoCliEvaluationTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertIn("score_instability", result.stdout)
+
+    def test_cli_ci_format_suppresses_reviewed_fingerprint(self) -> None:
+        records = load_records(ROOT / "examples/judgments/records.jsonl")
+        policy = load_policy(ROOT / "examples/judgments/policy.json")
+        report = audit_records(records, policy)
+        score_fingerprint = next(
+            issue.fingerprint for issue in report.issues if issue.detector == "score_instability"
+        )
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "audit",
+            "--records",
+            str(ROOT / "examples/judgments/records.jsonl"),
+            "--policy",
+            str(ROOT / "examples/judgments/policy.json"),
+            "--format",
+            "ci",
+            "--fail-on",
+            "critical",
+            "--severity-override",
+            "threshold_flip=critical",
+            "--suppress-fingerprint",
+            score_fingerprint,
+        ]
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("RubricTrace: fail", result.stdout)
+        self.assertIn("suppressed=1", result.stdout)
+        self.assertIn("threshold_flip", result.stdout)
+        self.assertNotIn(score_fingerprint, result.stdout)
 
     def test_evaluation_suite_matches_expected_issues(self) -> None:
         suite = json.loads((ROOT / "examples/judgments/suite.json").read_text(encoding="utf-8"))

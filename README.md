@@ -92,12 +92,40 @@ Policies are JSON:
   "position_delta": 1.0,
   "decision_threshold": 3.0,
   "require_evidence": true,
-  "require_rationale": true
+  "require_rationale": true,
+  "enabled_detectors": [
+    "missing_rationale",
+    "missing_evidence",
+    "score_instability",
+    "verdict_conflict",
+    "threshold_flip",
+    "position_bias"
+  ],
+  "severity_overrides": {
+    "position_bias": "high"
+  },
+  "rubric_thresholds": {
+    "preference": {
+      "position_delta": 0.75
+    }
+  },
+  "suppressions": [
+    "0123456789abcdef"
+  ]
 }
 ```
 
 `fail_on` accepts `low`, `medium`, `high`, or `critical`. The CLI exits with code `1` when any
 issue meets or exceeds that threshold. Malformed inputs exit with code `2`.
+
+Optional policy controls:
+
+- `enabled_detectors`: run only the listed detectors.
+- `severity_overrides`: change the severity assigned to a detector without changing its fingerprint.
+- `rubric_thresholds`: override `score_delta`, `position_delta`, or `decision_threshold` for a
+  specific rubric.
+- `suppressions`: hide reviewed findings by fingerprint from active issue counts and exit-code
+  decisions while keeping them visible in JSON under `suppressed_issues`.
 
 CLI flags override policy-file values:
 
@@ -108,6 +136,18 @@ rubrictrace audit \
   --score-delta 2.0 \
   --fail-on medium \
   --format json
+```
+
+Compact CI output and review controls are available from the CLI:
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/records.jsonl \
+  --policy examples/judgments/policy.json \
+  --format ci \
+  --disable-detector missing_evidence \
+  --severity-override position_bias=high \
+  --suppress-fingerprint 0123456789abcdef
 ```
 
 ## Detectors
@@ -124,6 +164,9 @@ rubrictrace audit \
 
 The checks are deterministic heuristics over supplied logs. They surface rows that deserve review;
 they do not prove the cause of a disagreement.
+
+Suppression and report-format settings do not change issue fingerprints. Fingerprints are computed
+before findings are partitioned into active and suppressed sets.
 
 ## Development
 

@@ -53,30 +53,40 @@ def audit_records(records: Iterable[JudgeRecord], policy: Policy | None = None) 
             issue.fingerprint,
         ),
     )
+    active_issues, suppressed_issues = _partition_suppressed(sorted_issues, resolved_policy)
     return AuditReport(
         records_scanned=len(record_tuple),
-        issues=tuple(sorted_issues),
+        issues=tuple(active_issues),
         policy=resolved_policy,
+        suppressed_issues=tuple(suppressed_issues),
     )
 
 
 def _single_record_issues(record: JudgeRecord, policy: Policy) -> list[Issue]:
     issues: list[Issue] = []
-    if policy.require_rationale and not _has_rationale(record):
+    if (
+        policy.detector_enabled("missing_rationale")
+        and policy.require_rationale
+        and not _has_rationale(record)
+    ):
         issues.append(
             _issue(
                 detector="missing_rationale",
-                severity="medium",
+                severity=policy.severity_for("missing_rationale", "medium"),
                 record=record,
                 message="judgment record is missing a reviewable rationale",
                 evidence={"run_id": record.run_id},
             )
         )
-    if policy.require_evidence and not record.evidence:
+    if (
+        policy.detector_enabled("missing_evidence")
+        and policy.require_evidence
+        and not record.evidence
+    ):
         issues.append(
             _issue(
                 detector="missing_evidence",
-                severity="medium",
+                severity=policy.severity_for("missing_evidence", "medium"),
                 record=record,
                 message="judgment record is missing evidence handles",
                 evidence={"run_id": record.run_id},
@@ -97,11 +107,14 @@ def _instability_issues(records: list[JudgeRecord], policy: Policy) -> list[Issu
     run_ids = sorted(record.run_id for record in records)
     issues: list[Issue] = []
 
-    if score_range >= policy.score_delta:
+    if (
+        policy.detector_enabled("score_instability")
+        and score_range >= policy.score_delta_for(first.rubric)
+    ):
         issues.append(
             _issue(
                 detector="score_instability",
-                severity="high",
+                severity=policy.severity_for("score_instability", "high"),
                 record=first,
                 message="repeated judgments have a large score range",
                 evidence={
@@ -116,26 +129,30 @@ def _instability_issues(records: list[JudgeRecord], policy: Policy) -> list[Issu
     verdicts = sorted(
         bucket for bucket in {verdict_bucket(record.verdict) for record in records} if bucket
     )
-    if verdicts == ["fail", "pass"]:
+    if policy.detector_enabled("verdict_conflict") and verdicts == ["fail", "pass"]:
         issues.append(
             _issue(
                 detector="verdict_conflict",
-                severity="high",
+                severity=policy.severity_for("verdict_conflict", "high"),
                 record=first,
                 message="repeated judgments disagree between passing and failing verdicts",
                 evidence={"verdicts": verdicts, "run_ids": run_ids},
             )
         )
 
-    if low_score < policy.decision_threshold <= high_score:
+    decision_threshold = policy.decision_threshold_for(first.rubric)
+    if (
+        policy.detector_enabled("threshold_flip")
+        and low_score < decision_threshold <= high_score
+    ):
         issues.append(
             _issue(
                 detector="threshold_flip",
-                severity="high",
+                severity=policy.severity_for("threshold_flip", "high"),
                 record=first,
                 message="repeated scores straddle the configured decision threshold",
                 evidence={
-                    "threshold": policy.decision_threshold,
+                    "threshold": decision_threshold,
                     "min_score": low_score,
                     "max_score": high_score,
                     "run_ids": run_ids,
@@ -147,6 +164,9 @@ def _instability_issues(records: list[JudgeRecord], policy: Policy) -> list[Issu
 
 
 def _position_issue(records: list[JudgeRecord], policy: Policy) -> Issue | None:
+    if not policy.detector_enabled("position_bias"):
+        return None
+
     by_position: dict[str, list[float]] = defaultdict(list)
     for record in records:
         bucket = position_bucket(record.position)
@@ -159,13 +179,13 @@ def _position_issue(records: list[JudgeRecord], policy: Policy) -> Issue | None:
     first_mean = mean(by_position["first"])
     second_mean = mean(by_position["second"])
     delta = abs(first_mean - second_mean)
-    if delta < policy.position_delta:
+    first = records[0]
+    if delta < policy.position_delta_for(first.rubric):
         return None
 
-    first = records[0]
     return _issue(
         detector="position_bias",
-        severity="medium",
+        severity=policy.severity_for("position_bias", "medium"),
         record=first,
         message="candidate score differs across pairwise presentation positions",
         evidence={
@@ -175,6 +195,20 @@ def _position_issue(records: list[JudgeRecord], policy: Policy) -> Issue | None:
             "run_ids": sorted(record.run_id for record in records),
         },
     )
+
+
+def _partition_suppressed(
+    issues: list[Issue],
+    policy: Policy,
+) -> tuple[list[Issue], list[Issue]]:
+    active_issues: list[Issue] = []
+    suppressed_issues: list[Issue] = []
+    for issue in issues:
+        if policy.is_suppressed(issue.fingerprint):
+            suppressed_issues.append(issue)
+        else:
+            active_issues.append(issue)
+    return active_issues, suppressed_issues
 
 
 def _has_rationale(record: JudgeRecord) -> bool:

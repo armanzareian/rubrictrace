@@ -8,7 +8,7 @@ from typing import Sequence
 from . import __version__
 from .evaluation import evaluate_suite, evaluation_failed, render_evaluation
 from .io import InputError, load_policy, load_records, load_suite
-from .models import ModelError
+from .models import DETECTORS, ModelError
 from .report import render_report
 from .scanner import audit_records
 
@@ -46,13 +46,29 @@ def build_parser() -> argparse.ArgumentParser:
     audit = subparsers.add_parser("audit", help="audit judgment records")
     audit.add_argument("--records", required=True, type=Path, help="JSONL judgment records")
     audit.add_argument("--policy", type=Path, help="optional JSON policy")
-    audit.add_argument("--format", choices=("text", "json"), default="text")
+    audit.add_argument("--format", choices=("text", "json", "ci"), default="text")
     audit.add_argument("--fail-on", choices=("low", "medium", "high", "critical"))
     audit.add_argument("--score-delta", type=float)
     audit.add_argument("--position-delta", type=float)
     audit.add_argument("--decision-threshold", type=float)
     audit.add_argument("--allow-missing-evidence", action="store_true")
     audit.add_argument("--allow-missing-rationale", action="store_true")
+    audit.add_argument(
+        "--disable-detector",
+        action="append",
+        choices=DETECTORS,
+        help="disable one detector for this run; may be repeated",
+    )
+    audit.add_argument(
+        "--severity-override",
+        action="append",
+        help="override detector severity as detector=low|medium|high|critical; may be repeated",
+    )
+    audit.add_argument(
+        "--suppress-fingerprint",
+        action="append",
+        help="suppress a reviewed finding fingerprint; may be repeated",
+    )
 
     eval_parser = subparsers.add_parser("eval", help="evaluate detectors against a suite")
     eval_parser.add_argument("--suite", required=True, type=Path, help="JSON evaluation suite")
@@ -70,6 +86,9 @@ def _run_audit(args: argparse.Namespace) -> int:
         decision_threshold=args.decision_threshold,
         require_evidence=False if args.allow_missing_evidence else None,
         require_rationale=False if args.allow_missing_rationale else None,
+        disabled_detectors=args.disable_detector,
+        severity_overrides=_parse_severity_overrides(args.severity_override),
+        suppressions=args.suppress_fingerprint,
     )
     report = audit_records(records, policy)
     print(render_report(report, output_format=args.format), end="")
@@ -81,3 +100,15 @@ def _run_eval(args: argparse.Namespace) -> int:
     result = evaluate_suite(suite)
     print(render_evaluation(result, output_format=args.format), end="")
     return 1 if evaluation_failed(result) else 0
+
+
+def _parse_severity_overrides(values: Sequence[str] | None) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for value in values or ():
+        if "=" not in value:
+            raise ValueError("severity override must use detector=severity")
+        detector, severity = value.split("=", 1)
+        if not detector.strip() or not severity.strip():
+            raise ValueError("severity override must use detector=severity")
+        overrides[detector.strip()] = severity.strip()
+    return overrides
