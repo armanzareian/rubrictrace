@@ -1,0 +1,5 @@
+item,answer,judge,dimension,judge_score,decision,order,pair,why,evidence_refs
+refund-001,answer-a,judge-run-1,groundedness,4.5,pass,first,refund-pair,"The answer cites the refund policy and matches the stated window.",doc-refunds
+refund-001,answer-a,judge-run-2,groundedness,2.5,fail,second,refund-pair,"The answer omits one condition from the policy.",doc-refunds
+refund-001,answer-b,judge-run-1,groundedness,3.5,pass,second,refund-pair,"The answer is mostly grounded but terse.",doc-refunds
+refund-001,answer-b,judge-run-2,groundedness,3.6,pass,first,refund-pair,"The answer stays close to the supplied source.",doc-refunds

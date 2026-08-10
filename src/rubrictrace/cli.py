@@ -7,8 +7,8 @@ from typing import Sequence
 
 from . import __version__
 from .evaluation import evaluate_suite, evaluation_failed, render_evaluation
-from .io import InputError, load_policy, load_records, load_suite
-from .models import DETECTORS, ModelError
+from .io import CSV_FIELDS, InputError, load_csv_records, load_policy, load_records, load_suite
+from .models import DETECTORS, JudgeRecord, ModelError
 from .report import render_report
 from .scanner import audit_records
 
@@ -44,7 +44,19 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     audit = subparsers.add_parser("audit", help="audit judgment records")
-    audit.add_argument("--records", required=True, type=Path, help="JSONL judgment records")
+    audit.add_argument("--records", required=True, type=Path, help="judgment records")
+    audit.add_argument(
+        "--input-format",
+        choices=("jsonl", "csv"),
+        default="jsonl",
+        help="records input format",
+    )
+    audit.add_argument(
+        "--map",
+        action="append",
+        dest="field_mapping",
+        help="CSV field mapping as field=column; repeat for each mapped field",
+    )
     audit.add_argument("--policy", type=Path, help="optional JSON policy")
     audit.add_argument("--format", choices=("text", "json", "ci"), default="text")
     audit.add_argument("--fail-on", choices=("low", "medium", "high", "critical"))
@@ -78,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_audit(args: argparse.Namespace) -> int:
-    records = load_records(args.records)
+    records = _load_audit_records(args)
     policy = load_policy(args.policy).with_overrides(
         fail_on=args.fail_on,
         score_delta=args.score_delta,
@@ -93,6 +105,16 @@ def _run_audit(args: argparse.Namespace) -> int:
     report = audit_records(records, policy)
     print(render_report(report, output_format=args.format), end="")
     return 1 if report.failed() else 0
+
+
+def _load_audit_records(args: argparse.Namespace) -> tuple[JudgeRecord, ...]:
+    if args.input_format == "jsonl":
+        if args.field_mapping:
+            raise ValueError("--map can only be used with --input-format csv")
+        return load_records(args.records)
+    if args.input_format == "csv":
+        return load_csv_records(args.records, _parse_field_mapping(args.field_mapping))
+    raise ValueError(f"unsupported input format: {args.input_format}")
 
 
 def _run_eval(args: argparse.Namespace) -> int:
@@ -112,3 +134,18 @@ def _parse_severity_overrides(values: Sequence[str] | None) -> dict[str, str]:
             raise ValueError("severity override must use detector=severity")
         overrides[detector.strip()] = severity.strip()
     return overrides
+
+
+def _parse_field_mapping(values: Sequence[str] | None) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for value in values or ():
+        if "=" not in value:
+            raise ValueError("CSV mapping must use field=column")
+        field_name, column = value.split("=", 1)
+        normalized_field = field_name.strip()
+        if normalized_field not in CSV_FIELDS:
+            raise ValueError(f"CSV mapping field must be one of {', '.join(CSV_FIELDS)}")
+        if not column.strip():
+            raise ValueError("CSV mapping column must be non-empty")
+        mapping[normalized_field] = column.strip()
+    return mapping

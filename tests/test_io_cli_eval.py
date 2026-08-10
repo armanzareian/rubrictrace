@@ -8,11 +8,23 @@ import unittest
 from pathlib import Path
 
 from rubrictrace.evaluation import evaluate_suite
-from rubrictrace.io import InputError, load_policy, load_records
+from rubrictrace.io import InputError, load_csv_records, load_policy, load_records
 from rubrictrace.models import Policy, RubricThresholds
 from rubrictrace.scanner import audit_records
 
 ROOT = Path(__file__).resolve().parents[1]
+CSV_MAPPING = {
+    "case_id": "item",
+    "candidate_id": "answer",
+    "run_id": "judge",
+    "rubric": "dimension",
+    "score": "judge_score",
+    "verdict": "decision",
+    "position": "order",
+    "pair_id": "pair",
+    "rationale": "why",
+    "evidence": "evidence_refs",
+}
 
 
 class IoCliEvaluationTests(unittest.TestCase):
@@ -92,6 +104,44 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertIn("rubric_thresholds.groundedness.score_delta", message)
         self.assertNotIn("secret", message)
 
+    def test_csv_mapping_loads_auditable_records(self) -> None:
+        records = load_csv_records(ROOT / "examples/judgments/records.csv", CSV_MAPPING)
+
+        self.assertEqual(4, len(records))
+        self.assertEqual(("doc-refunds",), records[0].evidence)
+        report = audit_records(records, Policy())
+
+        self.assertEqual(
+            {"position_bias", "score_instability", "threshold_flip", "verdict_conflict"},
+            {issue.detector for issue in report.issues},
+        )
+
+    def test_csv_error_identifies_row_column_and_expected_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "records.csv"
+            path.write_text(
+                "item,answer,judge,dimension,judge_score\n"
+                "case-1,answer-a,judge-1,groundedness,secret-score\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(InputError) as caught:
+                load_csv_records(
+                    path,
+                    {
+                        "case_id": "item",
+                        "candidate_id": "answer",
+                        "run_id": "judge",
+                        "rubric": "dimension",
+                        "score": "judge_score",
+                    },
+                )
+
+        message = str(caught.exception)
+        self.assertIn("records.csv:2 column 'judge_score'", message)
+        self.assertIn("score must be a number", message)
+        self.assertNotIn("secret-score", message)
+
     def test_cli_audit_json_and_exit_code(self) -> None:
         command = [
             sys.executable,
@@ -121,6 +171,42 @@ class IoCliEvaluationTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(8, payload["records_scanned"])
         self.assertGreaterEqual(payload["issue_count"], 1)
+        self.assertFalse(payload["failed"])
+
+    def test_cli_audit_csv_mapping(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "audit",
+            "--records",
+            str(ROOT / "examples/judgments/records.csv"),
+            "--input-format",
+            "csv",
+            "--format",
+            "json",
+            "--fail-on",
+            "critical",
+        ]
+        for field_name, column in CSV_MAPPING.items():
+            command.extend(["--map", f"{field_name}={column}"])
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(4, payload["records_scanned"])
+        self.assertEqual(
+            ["position_bias", "score_instability", "threshold_flip", "verdict_conflict"],
+            sorted(issue["detector"] for issue in payload["issues"]),
+        )
         self.assertFalse(payload["failed"])
 
     def test_cli_fails_on_high_threshold(self) -> None:

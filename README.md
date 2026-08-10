@@ -81,6 +81,34 @@ Optional fields:
 Input files are capped at 10 MiB. RubricTrace reports record identifiers and short structured
 evidence; it does not print full rationales in text output.
 
+### CSV Records
+
+CSV exports can be audited with explicit field mappings. This is useful for spreadsheet-style
+evaluation logs or benchmark exports whose column names do not match RubricTrace's native JSONL
+field names.
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/records.csv \
+  --input-format csv \
+  --map case_id=item \
+  --map candidate_id=answer \
+  --map run_id=judge \
+  --map rubric=dimension \
+  --map score=judge_score \
+  --map verdict=decision \
+  --map position=order \
+  --map pair_id=pair \
+  --map rationale=why \
+  --map evidence=evidence_refs \
+  --fail-on critical
+```
+
+Required CSV mappings are `case_id`, `candidate_id`, `run_id`, `rubric`, and `score`. Optional
+mappings are `verdict`, `position`, `pair_id`, `rationale`, and `evidence`. Evidence cells use
+semicolon-separated handles such as `doc-1;doc-2`. CSV validation errors identify the row, mapped
+column, and expected type without printing the full row.
+
 ## Policy
 
 Policies are JSON:
@@ -195,9 +223,28 @@ for issue in report.issues:
     print(issue.detector, issue.severity, issue.fingerprint)
 ```
 
+CSV inputs use the same normalized record model:
+
+```python
+from pathlib import Path
+
+from rubrictrace import load_csv_records
+
+records = load_csv_records(
+    Path("examples/judgments/records.csv"),
+    {
+        "case_id": "item",
+        "candidate_id": "answer",
+        "run_id": "judge",
+        "rubric": "dimension",
+        "score": "judge_score",
+    },
+)
+```
+
 ## Limitations
 
-- The initial loader expects native RubricTrace JSONL.
+- JSONL is the default input format; CSV inputs require explicit mappings for required fields.
 - Position bias checks require repeated records for the same `case_id`, `pair_id`,
   `candidate_id`, and `rubric` across different positions.
 - Evidence handles are checked for presence, not semantic correctness.
