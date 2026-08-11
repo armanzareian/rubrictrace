@@ -109,6 +109,47 @@ mappings are `verdict`, `position`, `pair_id`, `rationale`, and `evidence`. Evid
 semicolon-separated handles such as `doc-1;doc-2`. CSV validation errors identify the row, mapped
 column, and expected type without printing the full row.
 
+### Pairwise CSV Records
+
+Pairwise benchmark exports can be audited with a named CSV adapter that expands each comparison row
+into one normalized judgment record for the left candidate and one for the right candidate:
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/pairwise.csv \
+  --input-format pairwise-csv \
+  --fail-on critical
+```
+
+The default pairwise columns are:
+
+- `case_id`: stable evaluation item identifier.
+- `pair_id`: stable identifier for the compared answer pair.
+- `run_id`: judge run, replicate, or annotation identifier.
+- `rubric`: rubric dimension for the comparison.
+- `left_candidate` and `right_candidate`: candidate IDs as presented to the judge.
+- `left_score` and `right_score`: numeric scores assigned to each side.
+- `winner`: optional side or candidate ID; accepts `left`, `right`, `a`, `b`, `1`, `2`, `tie`,
+  `draw`, or either candidate ID.
+- `rationale`: optional judge explanation copied to both normalized records.
+- `evidence`: optional semicolon-separated evidence handles copied to both normalized records.
+
+Use `--map` with `--input-format pairwise-csv` to override a preset column name:
+
+```bash
+rubrictrace audit \
+  --records pairwise-export.csv \
+  --input-format pairwise-csv \
+  --map case_id=prompt_id \
+  --map left_candidate=model_a \
+  --map right_candidate=model_b \
+  --map winner=chosen_side
+```
+
+Pairwise rows preserve presentation position as `left` and `right`, and winner labels normalize to
+`win` and `lose` verdicts. This lets the same instability, threshold-flip, verdict-conflict, and
+position-bias detectors run over pairwise comparison exports.
+
 ## Policy
 
 Policies are JSON:
@@ -242,9 +283,21 @@ records = load_csv_records(
 )
 ```
 
+Pairwise CSV exports can be expanded through the preset adapter:
+
+```python
+from pathlib import Path
+
+from rubrictrace import load_pairwise_csv_records
+
+records = load_pairwise_csv_records(Path("examples/judgments/pairwise.csv"))
+```
+
 ## Limitations
 
-- JSONL is the default input format; CSV inputs require explicit mappings for required fields.
+- JSONL is the default input format; generic CSV inputs require explicit mappings for required
+  fields.
+- Pairwise CSV inputs assume each row compares exactly two presented candidates.
 - Position bias checks require repeated records for the same `case_id`, `pair_id`,
   `candidate_id`, and `rubric` across different positions.
 - Evidence handles are checked for presence, not semantic correctness.

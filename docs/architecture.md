@@ -4,8 +4,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 
 ## Components
 
-- `rubrictrace.io` loads JSONL judgment records, explicitly mapped CSV records, and JSON policies
-  with bounded file-size checks.
+- `rubrictrace.io` loads JSONL judgment records, explicitly mapped CSV records, pairwise CSV
+  comparison exports, and JSON policies with bounded file-size checks.
 - `rubrictrace.models` defines records, policy controls, issues, reports, and severity ordering.
 - `rubrictrace.scanner` runs deterministic detectors over normalized records.
 - `rubrictrace.report` renders text, JSON, and compact CI reports.
@@ -14,7 +14,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 
 ## Data Flow
 
-1. The loader parses JSONL rows or mapped CSV rows into `JudgeRecord` values.
+1. The loader parses JSONL rows, mapped CSV rows, or expanded pairwise CSV comparisons into
+   `JudgeRecord` values.
 2. A `Policy` is created from defaults, an optional policy file, and CLI overrides.
 3. The scanner groups records by stable case, candidate, rubric, and pairwise identifiers.
 4. Enabled detectors emit `Issue` values with stable fingerprints.
@@ -40,11 +41,17 @@ normalize external exports into the same `JudgeRecord` model before scanning.
 
 ## Input Adapters
 
-Native JSONL rows are parsed directly into the record model. CSV inputs go through an explicit
-field-mapping adapter so spreadsheet columns such as `item`, `answer`, or `judge_score` can be
-normalized without changing scanner behavior. Required CSV mappings cover case, candidate, run,
-rubric, and score identifiers; optional mappings preserve verdicts, pairwise position details,
+Native JSONL rows are parsed directly into the record model. Generic CSV inputs go through an
+explicit field-mapping adapter so spreadsheet columns such as `item`, `answer`, or `judge_score`
+can be normalized without changing scanner behavior. Required CSV mappings cover case, candidate,
+run, rubric, and score identifiers; optional mappings preserve verdicts, pairwise position details,
 rationales, and semicolon-separated evidence handles.
+
+Pairwise CSV inputs use a named preset for comparison exports. Each physical row must describe the
+case, pair, run, rubric, presented left/right candidate IDs, and left/right scores. The loader
+expands that row into two `JudgeRecord` values, assigns `left` and `right` positions, and converts
+winner-side labels into `win` and `lose` verdicts when available. Column overrides reuse the same
+`field=column` CLI shape as generic CSV mappings.
 
 Adapter validation reports file row, mapped column, and expected type. It avoids echoing full rows
 or long rationale text in error messages.

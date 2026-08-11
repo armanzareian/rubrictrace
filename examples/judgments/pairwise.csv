@@ -1,0 +1,3 @@
+case_id,pair_id,run_id,rubric,left_candidate,right_candidate,left_score,right_score,winner,rationale,evidence
+refund-001,refund-pref-001,judge-run-1,preference,answer-a,answer-b,4.4,2.7,left,"Answer A cites the refund policy and gives the clearest action.",doc-refunds;eval-note-7
+refund-001,refund-pref-001,judge-run-2,preference,answer-b,answer-a,3.0,2.8,left,"Answer B is preferred after the order is swapped.",doc-refunds;eval-note-7

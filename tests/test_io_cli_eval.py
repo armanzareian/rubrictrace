@@ -8,7 +8,13 @@ import unittest
 from pathlib import Path
 
 from rubrictrace.evaluation import evaluate_suite
-from rubrictrace.io import InputError, load_csv_records, load_policy, load_records
+from rubrictrace.io import (
+    InputError,
+    load_csv_records,
+    load_pairwise_csv_records,
+    load_policy,
+    load_records,
+)
 from rubrictrace.models import Policy, RubricThresholds
 from rubrictrace.scanner import audit_records
 
@@ -142,6 +148,48 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertIn("score must be a number", message)
         self.assertNotIn("secret-score", message)
 
+    def test_pairwise_csv_preset_expands_comparison_rows(self) -> None:
+        records = load_pairwise_csv_records(ROOT / "examples/judgments/pairwise.csv")
+
+        self.assertEqual(4, len(records))
+        self.assertEqual(
+            ["answer-a", "answer-b", "answer-b", "answer-a"],
+            [record.candidate_id for record in records],
+        )
+        self.assertEqual(
+            ["left", "right", "left", "right"],
+            [record.position for record in records],
+        )
+        self.assertEqual(["win", "lose", "win", "lose"], [record.verdict for record in records])
+        self.assertEqual(("doc-refunds", "eval-note-7"), records[0].evidence)
+
+        report = audit_records(records, Policy(fail_on="critical"))
+
+        self.assertEqual(
+            {"position_bias", "score_instability", "threshold_flip", "verdict_conflict"},
+            {issue.detector for issue in report.issues},
+        )
+        position_issue = next(issue for issue in report.issues if issue.detector == "position_bias")
+        self.assertEqual("refund-pref-001", position_issue.pair_id)
+
+    def test_pairwise_csv_error_identifies_row_column_and_expected_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pairwise.csv"
+            path.write_text(
+                "case_id,pair_id,run_id,rubric,left_candidate,right_candidate,"
+                "left_score,right_score,winner\n"
+                "case-1,pair-1,judge-1,preference,answer-a,answer-b,secret-score,2.0,left\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(InputError) as caught:
+                load_pairwise_csv_records(path)
+
+        message = str(caught.exception)
+        self.assertIn("pairwise.csv:2 column 'left_score'", message)
+        self.assertIn("left_score must be a number", message)
+        self.assertNotIn("secret-score", message)
+
     def test_cli_audit_json_and_exit_code(self) -> None:
         command = [
             sys.executable,
@@ -206,6 +254,40 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertEqual(
             ["position_bias", "score_instability", "threshold_flip", "verdict_conflict"],
             sorted(issue["detector"] for issue in payload["issues"]),
+        )
+        self.assertFalse(payload["failed"])
+
+    def test_cli_audit_pairwise_csv_preset(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "audit",
+            "--records",
+            str(ROOT / "examples/judgments/pairwise.csv"),
+            "--input-format",
+            "pairwise-csv",
+            "--format",
+            "json",
+            "--fail-on",
+            "critical",
+        ]
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(4, payload["records_scanned"])
+        self.assertIn(
+            "position_bias",
+            {issue["detector"] for issue in payload["issues"]},
         )
         self.assertFalse(payload["failed"])
 

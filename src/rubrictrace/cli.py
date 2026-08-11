@@ -7,7 +7,16 @@ from typing import Sequence
 
 from . import __version__
 from .evaluation import evaluate_suite, evaluation_failed, render_evaluation
-from .io import CSV_FIELDS, InputError, load_csv_records, load_policy, load_records, load_suite
+from .io import (
+    CSV_FIELDS,
+    PAIRWISE_CSV_FIELDS,
+    InputError,
+    load_csv_records,
+    load_pairwise_csv_records,
+    load_policy,
+    load_records,
+    load_suite,
+)
 from .models import DETECTORS, JudgeRecord, ModelError
 from .report import render_report
 from .scanner import audit_records
@@ -47,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--records", required=True, type=Path, help="judgment records")
     audit.add_argument(
         "--input-format",
-        choices=("jsonl", "csv"),
+        choices=("jsonl", "csv", "pairwise-csv"),
         default="jsonl",
         help="records input format",
     )
@@ -55,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--map",
         action="append",
         dest="field_mapping",
-        help="CSV field mapping as field=column; repeat for each mapped field",
+        help="CSV field mapping override as field=column; repeat for each mapped field",
     )
     audit.add_argument("--policy", type=Path, help="optional JSON policy")
     audit.add_argument("--format", choices=("text", "json", "ci"), default="text")
@@ -113,7 +122,15 @@ def _load_audit_records(args: argparse.Namespace) -> tuple[JudgeRecord, ...]:
             raise ValueError("--map can only be used with --input-format csv")
         return load_records(args.records)
     if args.input_format == "csv":
-        return load_csv_records(args.records, _parse_field_mapping(args.field_mapping))
+        return load_csv_records(
+            args.records,
+            _parse_field_mapping(args.field_mapping, CSV_FIELDS, "CSV"),
+        )
+    if args.input_format == "pairwise-csv":
+        return load_pairwise_csv_records(
+            args.records,
+            _parse_field_mapping(args.field_mapping, PAIRWISE_CSV_FIELDS, "pairwise CSV"),
+        )
     raise ValueError(f"unsupported input format: {args.input_format}")
 
 
@@ -136,16 +153,20 @@ def _parse_severity_overrides(values: Sequence[str] | None) -> dict[str, str]:
     return overrides
 
 
-def _parse_field_mapping(values: Sequence[str] | None) -> dict[str, str]:
+def _parse_field_mapping(
+    values: Sequence[str] | None,
+    allowed_fields: Sequence[str],
+    label: str,
+) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for value in values or ():
         if "=" not in value:
-            raise ValueError("CSV mapping must use field=column")
+            raise ValueError(f"{label} mapping must use field=column")
         field_name, column = value.split("=", 1)
         normalized_field = field_name.strip()
-        if normalized_field not in CSV_FIELDS:
-            raise ValueError(f"CSV mapping field must be one of {', '.join(CSV_FIELDS)}")
+        if normalized_field not in allowed_fields:
+            raise ValueError(f"{label} mapping field must be one of {', '.join(allowed_fields)}")
         if not column.strip():
-            raise ValueError("CSV mapping column must be non-empty")
+            raise ValueError(f"{label} mapping column must be non-empty")
         mapping[normalized_field] = column.strip()
     return mapping
