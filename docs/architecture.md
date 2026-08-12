@@ -5,7 +5,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 ## Components
 
 - `rubrictrace.io` loads JSONL judgment records, explicitly mapped CSV records, pairwise CSV
-  comparison exports, and JSON policies with bounded file-size checks.
+  comparison exports, single-answer rubric CSV exports, and JSON policies with bounded file-size
+  checks.
 - `rubrictrace.models` defines records, policy controls, issues, reports, and severity ordering.
 - `rubrictrace.scanner` runs deterministic detectors over normalized records.
 - `rubrictrace.report` renders text, JSON, and compact CI reports.
@@ -14,8 +15,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 
 ## Data Flow
 
-1. The loader parses JSONL rows, mapped CSV rows, or expanded pairwise CSV comparisons into
-   `JudgeRecord` values.
+1. The loader parses JSONL rows, mapped CSV rows, expanded pairwise CSV comparisons, or expanded
+   rubric CSV score columns into `JudgeRecord` values.
 2. A `Policy` is created from defaults, an optional policy file, and CLI overrides.
 3. The scanner groups records by stable case, candidate, rubric, and pairwise identifiers.
 4. Enabled detectors emit `Issue` values with stable fingerprints.
@@ -52,6 +53,12 @@ case, pair, run, rubric, presented left/right candidate IDs, and left/right scor
 expands that row into two `JudgeRecord` values, assigns `left` and `right` positions, and converts
 winner-side labels into `win` and `lose` verdicts when available. Column overrides reuse the same
 `field=column` CLI shape as generic CSV mappings.
+
+Rubric CSV inputs use a named preset for single-answer rubric exports. Each physical row must
+describe the case, candidate, and run. Score columns are discovered from headers ending in
+`_score`, or supplied explicitly as `rubric:column` pairs. The loader expands each score column
+into one `JudgeRecord` and copies optional verdict, position, pair, rationale, and evidence fields
+onto each normalized record.
 
 Adapter validation reports file row, mapped column, and expected type. It avoids echoing full rows
 or long rationale text in error messages.

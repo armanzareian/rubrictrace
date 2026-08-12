@@ -140,7 +140,7 @@ Use `--map` with `--input-format pairwise-csv` to override a preset column name:
 rubrictrace audit \
   --records pairwise-export.csv \
   --input-format pairwise-csv \
-  --map case_id=prompt_id \
+  --map case_id=item_id \
   --map left_candidate=model_a \
   --map right_candidate=model_b \
   --map winner=chosen_side
@@ -149,6 +149,51 @@ rubrictrace audit \
 Pairwise rows preserve presentation position as `left` and `right`, and winner labels normalize to
 `win` and `lose` verdicts. This lets the same instability, threshold-flip, verdict-conflict, and
 position-bias detectors run over pairwise comparison exports.
+
+### Rubric CSV Records
+
+Single-answer rubric exports often store one answer per row with a separate score column for each
+rubric dimension. The `rubric-csv` adapter expands each score column into its own normalized
+judgment record:
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/rubric_safety.csv \
+  --input-format rubric-csv \
+  --fail-on critical
+```
+
+Default rubric CSV columns are:
+
+- `case_id`: stable evaluation item identifier.
+- `candidate_id`: model, answer, or system variant being judged.
+- `run_id`: judge run, replicate, or annotation identifier.
+- `<rubric>_score`: one or more score columns, such as `safety_score` or `groundedness_score`.
+- `verdict`: optional verdict copied to each normalized rubric record.
+- `position`: optional presentation position copied to each normalized rubric record.
+- `pair_id`: optional pairwise identifier copied to each normalized rubric record.
+- `rationale`: optional judge explanation copied to each normalized rubric record.
+- `evidence`: optional semicolon-separated evidence handles copied to each normalized record.
+
+Use `--map` to adapt exports with different identifier or score column names:
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/rubric_retrieval.csv \
+  --input-format rubric-csv \
+  --map case_id=question_id \
+  --map candidate_id=answer_id \
+  --map run_id=judge_id \
+  --map verdict=decision \
+  --map rationale=why \
+  --map evidence=source_ids \
+  --map score_columns=groundedness:grounded,coverage:coverage \
+  --fail-on critical
+```
+
+When `score_columns` is not provided, every header ending in `_score` becomes a rubric after
+removing that suffix. For example, `safety_score` becomes rubric `safety`. Rubric CSV validation
+errors identify the row, mapped column, and expected type without printing the full row.
 
 ## Policy
 
@@ -293,11 +338,22 @@ from rubrictrace import load_pairwise_csv_records
 records = load_pairwise_csv_records(Path("examples/judgments/pairwise.csv"))
 ```
 
+Single-answer rubric CSV exports can also be expanded into normalized records:
+
+```python
+from pathlib import Path
+
+from rubrictrace import load_rubric_csv_records
+
+records = load_rubric_csv_records(Path("examples/judgments/rubric_safety.csv"))
+```
+
 ## Limitations
 
 - JSONL is the default input format; generic CSV inputs require explicit mappings for required
   fields.
 - Pairwise CSV inputs assume each row compares exactly two presented candidates.
+- Rubric CSV inputs assume each physical row represents one answer and one or more score columns.
 - Position bias checks require repeated records for the same `case_id`, `pair_id`,
   `candidate_id`, and `rubric` across different positions.
 - Evidence handles are checked for presence, not semantic correctness.

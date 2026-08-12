@@ -1,0 +1,3 @@
+question_id,answer_id,judge_id,grounded,coverage,decision,source_ids,why
+retrieval-001,answer-a,judge-run-1,4.5,3.8,pass,chunk-12;chunk-17,"Uses the retrieved policy chunks and covers most required conditions."
+retrieval-001,answer-a,judge-run-2,2.6,2.2,fail,chunk-12,"Misses one retrieved condition and overstates the refund window."

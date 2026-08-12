@@ -1,6 +1,13 @@
 """Offline audits for LLM-as-judge result logs."""
 
-from .io import InputError, load_csv_records, load_pairwise_csv_records, load_policy, load_records
+from .io import (
+    InputError,
+    load_csv_records,
+    load_pairwise_csv_records,
+    load_policy,
+    load_records,
+    load_rubric_csv_records,
+)
 from .models import AuditReport, Issue, JudgeRecord, Policy, RubricThresholds
 from .scanner import audit_records
 
@@ -16,6 +23,7 @@ __all__ = [
     "load_pairwise_csv_records",
     "load_policy",
     "load_records",
+    "load_rubric_csv_records",
 ]
 
 __version__ = "0.1.0"

@@ -48,6 +48,28 @@ REQUIRED_PAIRWISE_CSV_FIELDS: tuple[str, ...] = (
 PAIRWISE_CSV_DEFAULT_COLUMNS: Mapping[str, str] = {
     field_name: field_name for field_name in PAIRWISE_CSV_FIELDS
 }
+RUBRIC_CSV_FIELDS: tuple[str, ...] = (
+    "case_id",
+    "candidate_id",
+    "run_id",
+    "verdict",
+    "position",
+    "pair_id",
+    "rationale",
+    "evidence",
+    "score_columns",
+)
+REQUIRED_RUBRIC_CSV_FIELDS: tuple[str, ...] = ("case_id", "candidate_id", "run_id")
+RUBRIC_CSV_DEFAULT_COLUMNS: Mapping[str, str] = {
+    "case_id": "case_id",
+    "candidate_id": "candidate_id",
+    "run_id": "run_id",
+    "verdict": "verdict",
+    "position": "position",
+    "pair_id": "pair_id",
+    "rationale": "rationale",
+    "evidence": "evidence",
+}
 
 
 class InputError(ValueError):
@@ -142,6 +164,45 @@ def load_pairwise_csv_records(
     return tuple(records)
 
 
+def load_rubric_csv_records(
+    path: Path,
+    field_mapping: Mapping[str, str] | None = None,
+) -> tuple[JudgeRecord, ...]:
+    _check_file(path)
+    overrides = dict(field_mapping or {})
+    _validate_rubric_csv_overrides(overrides)
+
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            headers = reader.fieldnames
+            if headers is None:
+                raise InputError(f"{path}: CSV header row is required")
+            resolved_mapping, score_columns = _resolve_rubric_csv_mapping(
+                tuple(headers),
+                overrides,
+            )
+            _validate_csv_headers(path, tuple(headers), resolved_mapping)
+
+            records: list[JudgeRecord] = []
+            for row_index, row in enumerate(reader, start=2):
+                records.extend(
+                    _rubric_csv_records(
+                        path,
+                        row_index,
+                        cast(dict[str, str | None], row),
+                        resolved_mapping,
+                        score_columns,
+                    )
+                )
+    except csv.Error as exc:
+        raise InputError(f"{path}: invalid CSV: {exc}") from exc
+
+    if not records:
+        raise InputError(f"{path}: no judgment records found")
+    return tuple(records)
+
+
 def load_policy(path: Path | None) -> Policy:
     if path is None:
         return Policy()
@@ -200,6 +261,15 @@ def _validate_pairwise_csv_overrides(field_mapping: Mapping[str, str]) -> None:
             raise InputError(f"pairwise CSV mapping: {field_name} column must be non-empty")
 
 
+def _validate_rubric_csv_overrides(field_mapping: Mapping[str, str]) -> None:
+    unknown = sorted(set(field_mapping) - set(RUBRIC_CSV_FIELDS))
+    if unknown:
+        raise InputError(f"rubric CSV mapping: unsupported field {unknown[0]!r}")
+    for field_name, column in field_mapping.items():
+        if not column.strip():
+            raise InputError(f"rubric CSV mapping: {field_name} column must be non-empty")
+
+
 def _resolve_pairwise_csv_mapping(
     headers: Sequence[str],
     overrides: Mapping[str, str],
@@ -219,6 +289,70 @@ def _resolve_pairwise_csv_mapping(
         if field_name not in mapping:
             raise InputError(f"pairwise CSV mapping: missing required field {field_name!r}")
     return mapping
+
+
+def _resolve_rubric_csv_mapping(
+    headers: Sequence[str],
+    overrides: Mapping[str, str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    header_set = set(headers)
+    mapping: dict[str, str] = {}
+    for field_name in REQUIRED_RUBRIC_CSV_FIELDS:
+        default_column = RUBRIC_CSV_DEFAULT_COLUMNS[field_name]
+        mapping[field_name] = default_column
+
+    for field_name in ("verdict", "position", "pair_id", "rationale", "evidence"):
+        default_column = RUBRIC_CSV_DEFAULT_COLUMNS[field_name]
+        if default_column in header_set:
+            mapping[field_name] = default_column
+
+    score_columns = _default_rubric_score_columns(headers)
+    for field_name, column in overrides.items():
+        if field_name == "score_columns":
+            score_columns = _parse_rubric_score_columns(column)
+        else:
+            mapping[field_name] = column
+
+    for field_name in REQUIRED_RUBRIC_CSV_FIELDS:
+        if field_name not in mapping:
+            raise InputError(f"rubric CSV mapping: missing required field {field_name!r}")
+    if not score_columns:
+        raise InputError(
+            "rubric CSV mapping: no rubric score columns found; "
+            "use --map score_columns=rubric:column[,rubric:column]"
+    )
+    missing_score_columns = sorted(set(score_columns.values()) - header_set)
+    if missing_score_columns:
+        raise InputError(
+            f"rubric CSV mapping: score column {missing_score_columns[0]!r} is missing"
+        )
+    return mapping, score_columns
+
+
+def _default_rubric_score_columns(headers: Sequence[str]) -> dict[str, str]:
+    score_columns: dict[str, str] = {}
+    for header in headers:
+        if header.endswith("_score") and len(header) > len("_score"):
+            rubric = header[: -len("_score")].strip()
+            if rubric:
+                score_columns[rubric] = header
+    return score_columns
+
+
+def _parse_rubric_score_columns(value: str) -> dict[str, str]:
+    score_columns: dict[str, str] = {}
+    for item in value.split(","):
+        if not item.strip():
+            continue
+        if ":" not in item:
+            raise InputError("rubric CSV mapping: score_columns must use rubric:column pairs")
+        rubric, column = item.split(":", 1)
+        if not rubric.strip() or not column.strip():
+            raise InputError("rubric CSV mapping: score_columns must use rubric:column pairs")
+        score_columns[rubric.strip()] = column.strip()
+    if not score_columns:
+        raise InputError("rubric CSV mapping: score_columns must include at least one pair")
+    return score_columns
 
 
 def _validate_csv_headers(
@@ -322,6 +456,37 @@ def _pairwise_csv_records(
             right_verdict,
         ),
     )
+
+
+def _rubric_csv_records(
+    path: Path,
+    row_index: int,
+    row: dict[str, str | None],
+    field_mapping: Mapping[str, str],
+    score_columns: Mapping[str, str],
+) -> tuple[JudgeRecord, ...]:
+    common: dict[str, Any] = {
+        "case_id": _csv_text(path, row_index, row, field_mapping, "case_id"),
+        "candidate_id": _csv_text(path, row_index, row, field_mapping, "candidate_id"),
+        "run_id": _csv_text(path, row_index, row, field_mapping, "run_id"),
+        "evidence": _csv_evidence(
+            row.get(field_mapping["evidence"]) if "evidence" in field_mapping else None
+        ),
+    }
+    for optional_field in ("verdict", "position", "pair_id", "rationale"):
+        value = _csv_optional_text(path, row_index, row, field_mapping, optional_field)
+        if value is not None:
+            common[optional_field] = value
+
+    records: list[JudgeRecord] = []
+    for rubric, column in score_columns.items():
+        score = _csv_number(row.get(column), rubric, _csv_source(path, row_index, column))
+        data = {**common, "rubric": rubric, "score": score}
+        try:
+            records.append(JudgeRecord.from_mapping(data, source=f"{path}:{row_index}"))
+        except ModelError as exc:
+            raise InputError(str(exc)) from exc
+    return tuple(records)
 
 
 def _pairwise_record(

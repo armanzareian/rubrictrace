@@ -10,11 +10,13 @@ from .evaluation import evaluate_suite, evaluation_failed, render_evaluation
 from .io import (
     CSV_FIELDS,
     PAIRWISE_CSV_FIELDS,
+    RUBRIC_CSV_FIELDS,
     InputError,
     load_csv_records,
     load_pairwise_csv_records,
     load_policy,
     load_records,
+    load_rubric_csv_records,
     load_suite,
 )
 from .models import DETECTORS, JudgeRecord, ModelError
@@ -56,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--records", required=True, type=Path, help="judgment records")
     audit.add_argument(
         "--input-format",
-        choices=("jsonl", "csv", "pairwise-csv"),
+        choices=("jsonl", "csv", "pairwise-csv", "rubric-csv"),
         default="jsonl",
         help="records input format",
     )
@@ -130,6 +132,11 @@ def _load_audit_records(args: argparse.Namespace) -> tuple[JudgeRecord, ...]:
         return load_pairwise_csv_records(
             args.records,
             _parse_field_mapping(args.field_mapping, PAIRWISE_CSV_FIELDS, "pairwise CSV"),
+        )
+    if args.input_format == "rubric-csv":
+        return load_rubric_csv_records(
+            args.records,
+            _parse_field_mapping(args.field_mapping, RUBRIC_CSV_FIELDS, "rubric CSV"),
         )
     raise ValueError(f"unsupported input format: {args.input_format}")
 

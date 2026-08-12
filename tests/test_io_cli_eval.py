@@ -14,6 +14,7 @@ from rubrictrace.io import (
     load_pairwise_csv_records,
     load_policy,
     load_records,
+    load_rubric_csv_records,
 )
 from rubrictrace.models import Policy, RubricThresholds
 from rubrictrace.scanner import audit_records
@@ -190,6 +191,69 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertIn("left_score must be a number", message)
         self.assertNotIn("secret-score", message)
 
+    def test_rubric_csv_preset_expands_score_columns(self) -> None:
+        records = load_rubric_csv_records(ROOT / "examples/judgments/rubric_safety.csv")
+
+        self.assertEqual(6, len(records))
+        self.assertEqual(
+            ["safety", "helpfulness", "safety", "helpfulness", "safety", "helpfulness"],
+            [record.rubric for record in records],
+        )
+        self.assertEqual(("safety-policy-1",), records[0].evidence)
+
+        report = audit_records(records, Policy(fail_on="critical"))
+
+        self.assertEqual(
+            {"score_instability", "threshold_flip", "verdict_conflict"},
+            {issue.detector for issue in report.issues},
+        )
+        self.assertFalse(report.failed())
+
+    def test_rubric_csv_mapping_loads_retrieval_export(self) -> None:
+        records = load_rubric_csv_records(
+            ROOT / "examples/judgments/rubric_retrieval.csv",
+            {
+                "case_id": "question_id",
+                "candidate_id": "answer_id",
+                "run_id": "judge_id",
+                "verdict": "decision",
+                "rationale": "why",
+                "evidence": "source_ids",
+                "score_columns": "groundedness:grounded,coverage:coverage",
+            },
+        )
+
+        self.assertEqual(4, len(records))
+        self.assertEqual(
+            ["groundedness", "coverage", "groundedness", "coverage"],
+            [record.rubric for record in records],
+        )
+        self.assertEqual(("chunk-12", "chunk-17"), records[0].evidence)
+
+        report = audit_records(records, Policy(fail_on="critical"))
+
+        self.assertEqual(
+            {"score_instability", "threshold_flip", "verdict_conflict"},
+            {issue.detector for issue in report.issues},
+        )
+
+    def test_rubric_csv_error_identifies_row_column_and_expected_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rubric.csv"
+            path.write_text(
+                "case_id,candidate_id,run_id,safety_score\n"
+                "case-1,answer-a,judge-1,secret-score\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(InputError) as caught:
+                load_rubric_csv_records(path)
+
+        message = str(caught.exception)
+        self.assertIn("rubric.csv:2 column 'safety_score'", message)
+        self.assertIn("safety must be a number", message)
+        self.assertNotIn("secret-score", message)
+
     def test_cli_audit_json_and_exit_code(self) -> None:
         command = [
             sys.executable,
@@ -287,6 +351,40 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertEqual(4, payload["records_scanned"])
         self.assertIn(
             "position_bias",
+            {issue["detector"] for issue in payload["issues"]},
+        )
+        self.assertFalse(payload["failed"])
+
+    def test_cli_audit_rubric_csv_preset(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "audit",
+            "--records",
+            str(ROOT / "examples/judgments/rubric_safety.csv"),
+            "--input-format",
+            "rubric-csv",
+            "--format",
+            "json",
+            "--fail-on",
+            "critical",
+        ]
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(6, payload["records_scanned"])
+        self.assertIn(
+            "verdict_conflict",
             {issue["detector"] for issue in payload["issues"]},
         )
         self.assertFalse(payload["failed"])
