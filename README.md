@@ -16,6 +16,8 @@ locally with no runtime dependencies and makes no network requests.
 - **Judgment-row audit:** inspect the records behind aggregate eval scores before relying on them.
 - **Deterministic diagnostics:** produce repeatable findings for local development and CI.
 - **Reviewable evidence:** include compact score ranges, verdict sets, positions, and record IDs.
+- **Agreement metrics:** summarize repeated-judge agreement and threshold sensitivity from the
+  supplied log.
 - **Stable fingerprints:** identify findings across report formats and future baselines.
 - **Policy exit codes:** fail only when findings meet the severity threshold you choose.
 - **Labeled evaluation:** measure detector behavior against a small JSON fixture suite.
@@ -51,6 +53,14 @@ Run the included labeled evaluation:
 
 ```bash
 rubrictrace eval --suite examples/judgments/suite.json
+```
+
+Summarize repeated-judge agreement and threshold sensitivity:
+
+```bash
+rubrictrace metrics \
+  --records examples/judgments/records.jsonl \
+  --policy examples/judgments/policy.json
 ```
 
 ## Judgment Records
@@ -282,6 +292,21 @@ they do not prove the cause of a disagreement.
 Suppression and report-format settings do not change issue fingerprints. Fingerprints are computed
 before findings are partitioned into active and suppressed sets.
 
+## Metrics
+
+The `metrics` command reports deterministic summaries over the supplied judgment records:
+
+- repeated case/candidate/rubric groups with run counts, score range, mean score, verdict counts,
+  majority verdict agreement, and distance from the decision threshold;
+- pairwise position-effect rows by case, pair, candidate, and rubric;
+- threshold-sensitivity rows showing how many repeated groups would be flagged at several
+  `score_delta` settings;
+- threshold-sensitivity rows showing how many pairwise position groups would be flagged at several
+  `position_delta` settings.
+
+Use `--format json` when feeding the summary into dashboards or notebooks. The output describes
+only the supplied records and should not be read as a broader statement about model quality.
+
 ## Development
 
 ```bash
@@ -289,6 +314,7 @@ make test
 make quality
 make demo
 make eval
+make metrics
 ```
 
 The project is intentionally dependency-light. Optional `ruff` and `mypy` configuration is included
@@ -299,7 +325,7 @@ for teams that want stricter local checks.
 ```python
 from pathlib import Path
 
-from rubrictrace import audit_records, load_policy, load_records
+from rubrictrace import audit_records, load_policy, load_records, summarize_records
 
 records = load_records(Path("examples/judgments/records.jsonl"))
 policy = load_policy(Path("examples/judgments/policy.json"))
@@ -307,6 +333,9 @@ report = audit_records(records, policy)
 
 for issue in report.issues:
     print(issue.detector, issue.severity, issue.fingerprint)
+
+summary = summarize_records(records, policy)
+print(summary["threshold_sensitivity"]["score_instability"])
 ```
 
 CSV inputs use the same normalized record model:

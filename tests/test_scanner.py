@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from rubrictrace.models import JudgeRecord, Policy, RubricThresholds
+from rubrictrace.metrics import render_metrics, summarize_records
 from rubrictrace.report import render_report
 from rubrictrace.scanner import audit_records
 
@@ -239,6 +240,54 @@ class ScannerTests(unittest.TestCase):
         self.assertIn(fingerprints[0], text)
         self.assertIn(fingerprints[0], ci)
         self.assertIn(fingerprints[0], rendered_json)
+
+    def test_metrics_summarize_agreement_and_threshold_sensitivity(self) -> None:
+        records = (
+            JudgeRecord(
+                case_id="case-9",
+                candidate_id="answer-i",
+                run_id="run-1",
+                rubric="groundedness",
+                score=4.5,
+                verdict="pass",
+                position="first",
+                pair_id="pair-9",
+                rationale="Grounded response with citations.",
+                evidence=("doc-9",),
+            ),
+            JudgeRecord(
+                case_id="case-9",
+                candidate_id="answer-i",
+                run_id="run-2",
+                rubric="groundedness",
+                score=2.5,
+                verdict="fail",
+                position="second",
+                pair_id="pair-9",
+                rationale="Missing important citation support.",
+                evidence=("doc-9",),
+            ),
+        )
+
+        summary = summarize_records(records, Policy(score_delta=2.0, position_delta=1.0))
+
+        self.assertEqual(2, summary["records_scanned"])
+        self.assertEqual(1, len(summary["agreement"]))
+        self.assertEqual(2.0, summary["agreement"][0]["score_range"])
+        self.assertEqual({"fail": 1, "pass": 1}, summary["agreement"][0]["verdict_counts"])
+        self.assertEqual(0.5, summary["agreement"][0]["verdict_agreement"])
+        self.assertEqual(1, len(summary["position_effects"]))
+        self.assertEqual(2.0, summary["position_effects"][0]["delta"])
+        self.assertIn(
+            {"score_delta": 2.0, "groups_flagged": 1},
+            summary["threshold_sensitivity"]["score_instability"],
+        )
+        self.assertIn(
+            {"position_delta": 1.0, "groups_flagged": 1},
+            summary["threshold_sensitivity"]["position_bias"],
+        )
+        self.assertIn("position_effects:", render_metrics(summary))
+        self.assertIn("threshold_sensitivity:", render_metrics(summary))
 
 
 if __name__ == "__main__":

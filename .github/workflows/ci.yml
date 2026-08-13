@@ -26,3 +26,4 @@ jobs:
       - run: make quality
       - run: make demo
       - run: make eval
+      - run: make metrics

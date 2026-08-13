@@ -65,6 +65,16 @@ def render_evaluation(result: dict[str, Any], *, output_format: str = "text") ->
             lines.append(f"- false_negative {key}")
     else:
         lines.append("mismatches: none")
+    if result["detectors"]:
+        lines.append("detectors:")
+        for detector, metrics in result["detectors"].items():
+            lines.append(
+                "- "
+                f"{detector}: precision={metrics['precision']:.3f} "
+                f"recall={metrics['recall']:.3f} f1={metrics['f1']:.3f} "
+                f"false_positive={metrics['false_positive']} "
+                f"false_negative={metrics['false_negative']}"
+            )
     return "\n".join(lines) + "\n"
 
 

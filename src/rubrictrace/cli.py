@@ -19,6 +19,7 @@ from .io import (
     load_rubric_csv_records,
     load_suite,
 )
+from .metrics import render_metrics, summarize_records
 from .models import DETECTORS, JudgeRecord, ModelError
 from .report import render_report
 from .scanner import audit_records
@@ -40,6 +41,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_audit(args)
         if args.command == "eval":
             return _run_eval(args)
+        if args.command == "metrics":
+            return _run_metrics(args)
     except (InputError, ModelError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -97,6 +100,23 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--suite", required=True, type=Path, help="JSON evaluation suite")
     eval_parser.add_argument("--format", choices=("text", "json"), default="text")
 
+    metrics = subparsers.add_parser("metrics", help="summarize agreement and thresholds")
+    metrics.add_argument("--records", required=True, type=Path, help="judgment records")
+    metrics.add_argument(
+        "--input-format",
+        choices=("jsonl", "csv", "pairwise-csv", "rubric-csv"),
+        default="jsonl",
+        help="records input format",
+    )
+    metrics.add_argument(
+        "--map",
+        action="append",
+        dest="field_mapping",
+        help="CSV field mapping override as field=column; repeat for each mapped field",
+    )
+    metrics.add_argument("--policy", type=Path, help="optional JSON policy")
+    metrics.add_argument("--format", choices=("text", "json"), default="text")
+
     return parser
 
 
@@ -121,7 +141,7 @@ def _run_audit(args: argparse.Namespace) -> int:
 def _load_audit_records(args: argparse.Namespace) -> tuple[JudgeRecord, ...]:
     if args.input_format == "jsonl":
         if args.field_mapping:
-            raise ValueError("--map can only be used with --input-format csv")
+            raise ValueError("--map can only be used with CSV input formats")
         return load_records(args.records)
     if args.input_format == "csv":
         return load_csv_records(
@@ -146,6 +166,13 @@ def _run_eval(args: argparse.Namespace) -> int:
     result = evaluate_suite(suite)
     print(render_evaluation(result, output_format=args.format), end="")
     return 1 if evaluation_failed(result) else 0
+
+
+def _run_metrics(args: argparse.Namespace) -> int:
+    records = _load_audit_records(args)
+    policy = load_policy(args.policy)
+    print(render_metrics(summarize_records(records, policy), output_format=args.format), end="")
+    return 0
 
 
 def _parse_severity_overrides(values: Sequence[str] | None) -> dict[str, str]:

@@ -1,4 +1,4 @@
-.PHONY: test quality demo eval
+.PHONY: test quality demo eval metrics
 
 PYTHON ?= python3
 
@@ -17,3 +17,8 @@ demo:
 eval:
 	PYTHONPATH=src $(PYTHON) -m rubrictrace eval \
 		--suite examples/judgments/suite.json
+
+metrics:
+	PYTHONPATH=src $(PYTHON) -m rubrictrace metrics \
+		--records examples/judgments/records.jsonl \
+		--policy examples/judgments/policy.json

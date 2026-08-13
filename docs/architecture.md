@@ -9,6 +9,7 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
   checks.
 - `rubrictrace.models` defines records, policy controls, issues, reports, and severity ordering.
 - `rubrictrace.scanner` runs deterministic detectors over normalized records.
+- `rubrictrace.metrics` summarizes repeated-judge agreement and threshold sensitivity.
 - `rubrictrace.report` renders text, JSON, and compact CI reports.
 - `rubrictrace.evaluation` compares scanner output against labeled fixture suites.
 - `rubrictrace.cli` wires the commands, output formats, and exit codes.
@@ -26,6 +27,11 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 7. The CLI exits with `1` only when an active finding meets or exceeds the configured severity
    threshold.
 
+The metrics command uses the same normalized records and policy thresholds, but emits descriptive
+summaries instead of findings. It groups repeated case/candidate/rubric records for score and
+verdict agreement, and groups pairwise records by case, pair, candidate, and rubric for position
+threshold sensitivity.
+
 ## Detector Design
 
 Detectors are intentionally simple and reviewable:
@@ -39,6 +45,16 @@ only removes reviewed findings from active counts and failure decisions.
 
 The scanner avoids stochastic behavior and does not call external models. Future adapters should
 normalize external exports into the same `JudgeRecord` model before scanning.
+
+## Metrics Design
+
+Metrics are deterministic summaries over the supplied rows, not estimates of broad model or judge
+quality. Agreement rows require at least two records for the same case, candidate, and rubric.
+Verdict agreement uses normalized pass/fail buckets and reports the majority share when verdicts
+are available. Position-effect rows require both first and second presentation positions for the
+same case, pair, candidate, and rubric. Threshold sensitivity is bootstrap-free: it reports the
+number of observed groups that would be flagged at fixed score-delta and position-delta settings
+plus the active policy thresholds.
 
 ## Input Adapters
 

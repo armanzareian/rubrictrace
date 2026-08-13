@@ -485,6 +485,49 @@ class IoCliEvaluationTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("mismatches: none", result.stdout)
+        self.assertIn("detectors:", result.stdout)
+
+    def test_cli_metrics_json(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "rubrictrace",
+                "metrics",
+                "--records",
+                str(ROOT / "examples/judgments/records.jsonl"),
+                "--policy",
+                str(ROOT / "examples/judgments/policy.json"),
+                "--format",
+                "json",
+            ],
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(8, payload["records_scanned"])
+        self.assertEqual(
+            {
+                "agreement",
+                "policy_thresholds",
+                "position_effects",
+                "records_scanned",
+                "threshold_sensitivity",
+            },
+            set(payload),
+        )
+        refund_row = next(row for row in payload["agreement"] if row["case_id"] == "refund-001")
+        self.assertEqual("answer-a", refund_row["candidate_id"])
+        self.assertEqual("refund-pair", payload["position_effects"][0]["pair_id"])
+        self.assertIn(
+            {"score_delta": 1.5, "groups_flagged": 1},
+            payload["threshold_sensitivity"]["score_instability"],
+        )
 
 
 if __name__ == "__main__":
