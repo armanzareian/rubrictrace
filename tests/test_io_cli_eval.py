@@ -514,6 +514,7 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertEqual(
             {
                 "agreement",
+                "confidence_intervals",
                 "policy_thresholds",
                 "position_effects",
                 "records_scanned",
@@ -521,11 +522,24 @@ class IoCliEvaluationTests(unittest.TestCase):
             },
             set(payload),
         )
+        self.assertEqual("wilson_score", payload["confidence_intervals"]["method"])
         refund_row = next(row for row in payload["agreement"] if row["case_id"] == "refund-001")
         self.assertEqual("answer-a", refund_row["candidate_id"])
+        self.assertEqual(0.094531, refund_row["verdict_agreement_ci95"]["lower"])
         self.assertEqual("refund-pair", payload["position_effects"][0]["pair_id"])
         self.assertIn(
-            {"score_delta": 1.5, "groups_flagged": 1},
+            {
+                "score_delta": 1.5,
+                "groups_flagged": 1,
+                "groups_total": 3,
+                "groups_flagged_rate": 0.333333,
+                "groups_flagged_ci95": {
+                    "lower": 0.061492,
+                    "upper": 0.79234,
+                    "successes": 1,
+                    "total": 3,
+                },
+            },
             payload["threshold_sensitivity"]["score_instability"],
         )
 

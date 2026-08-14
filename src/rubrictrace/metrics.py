@@ -8,6 +8,8 @@ from typing import Any, Iterable
 from .models import JudgeRecord, Policy, position_bucket, verdict_bucket
 
 THRESHOLD_SENSITIVITY_STEPS: tuple[float, ...] = (0.5, 1.0, 1.5, 2.0, 2.5)
+CONFIDENCE_LEVEL = 0.95
+WILSON_Z = 1.959963984540054
 
 
 def summarize_records(
@@ -25,6 +27,11 @@ def summarize_records(
             "score_delta": resolved_policy.score_delta,
             "position_delta": resolved_policy.position_delta,
             "decision_threshold": resolved_policy.decision_threshold,
+        },
+        "confidence_intervals": {
+            "method": "wilson_score",
+            "level": CONFIDENCE_LEVEL,
+            "scope": "supplied_records",
         },
         "agreement": _agreement_rows(repeated_groups, resolved_policy),
         "position_effects": _position_effect_rows(position_groups),
@@ -50,6 +57,12 @@ def render_metrics(summary: dict[str, Any], *, output_format: str = "text") -> s
             f"position_delta={summary['policy_thresholds']['position_delta']}, "
             f"decision_threshold={summary['policy_thresholds']['decision_threshold']}"
         ),
+        (
+            "confidence_intervals: "
+            f"method={summary['confidence_intervals']['method']} "
+            f"level={summary['confidence_intervals']['level']} "
+            f"scope={summary['confidence_intervals']['scope']}"
+        ),
         "",
         "agreement:",
     ]
@@ -64,6 +77,7 @@ def render_metrics(summary: dict[str, Any], *, output_format: str = "text") -> s
                 f"score_range={row['score_range']:.6g} "
                 f"mean_score={row['mean_score']:.6g} "
                 f"verdict_agreement={row['verdict_agreement']} "
+                f"verdict_agreement_ci95={_format_interval(row['verdict_agreement_ci95'])} "
                 f"threshold_margin={row['threshold_margin']:.6g}"
             )
     else:
@@ -88,13 +102,19 @@ def render_metrics(summary: dict[str, Any], *, output_format: str = "text") -> s
     for row in summary["threshold_sensitivity"]["score_instability"]:
         lines.append(
             "- "
-            f"score_delta={row['score_delta']:.6g} groups_flagged={row['groups_flagged']}"
+            f"score_delta={row['score_delta']:.6g} "
+            f"groups_flagged={row['groups_flagged']}/{row['groups_total']} "
+            f"rate={_format_optional_number(row['groups_flagged_rate'])} "
+            f"ci95={_format_interval(row['groups_flagged_ci95'])}"
         )
     lines.append("position_bias:")
     for row in summary["threshold_sensitivity"]["position_bias"]:
         lines.append(
             "- "
-            f"position_delta={row['position_delta']:.6g} groups_flagged={row['groups_flagged']}"
+            f"position_delta={row['position_delta']:.6g} "
+            f"groups_flagged={row['groups_flagged']}/{row['groups_total']} "
+            f"rate={_format_optional_number(row['groups_flagged_rate'])} "
+            f"ci95={_format_interval(row['groups_flagged_ci95'])}"
         )
 
     return "\n".join(lines) + "\n"
@@ -137,8 +157,10 @@ def _agreement_rows(
         if verdict_total:
             majority_count = max(verdict_counts.values())
             verdict_agreement = round(majority_count / verdict_total, 6)
+            verdict_agreement_ci95 = _wilson_interval(majority_count, verdict_total)
         else:
             verdict_agreement = None
+            verdict_agreement_ci95 = None
 
         rows.append(
             {
@@ -152,6 +174,7 @@ def _agreement_rows(
                 "score_range": round(max(scores) - min(scores), 6),
                 "verdict_counts": dict(sorted(verdict_counts.items())),
                 "verdict_agreement": verdict_agreement,
+                "verdict_agreement_ci95": verdict_agreement_ci95,
                 "threshold_margin": round(
                     _threshold_margin(scores, policy.decision_threshold_for(rubric)),
                     6,
@@ -215,15 +238,25 @@ def _score_sensitivity(
     policy: Policy,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    comparable_groups = [
+        group_records for group_records in groups.values() if len(group_records) >= 2
+    ]
+    groups_total = len(comparable_groups)
     for score_delta in _sensitivity_steps(policy.score_delta, THRESHOLD_SENSITIVITY_STEPS):
         flagged = 0
-        for group_records in groups.values():
-            if len(group_records) < 2:
-                continue
+        for group_records in comparable_groups:
             scores = [record.score for record in group_records]
             if max(scores) - min(scores) >= score_delta:
                 flagged += 1
-        rows.append({"score_delta": score_delta, "groups_flagged": flagged})
+        rows.append(
+            {
+                "score_delta": score_delta,
+                "groups_flagged": flagged,
+                "groups_total": groups_total,
+                "groups_flagged_rate": _rate(flagged, groups_total),
+                "groups_flagged_ci95": _wilson_interval(flagged, groups_total),
+            }
+        )
     return rows
 
 
@@ -237,7 +270,15 @@ def _position_sensitivity(
 
     for position_delta in _sensitivity_steps(policy.position_delta, THRESHOLD_SENSITIVITY_STEPS):
         flagged = sum(delta >= position_delta for delta in comparable_deltas)
-        rows.append({"position_delta": position_delta, "groups_flagged": flagged})
+        rows.append(
+            {
+                "position_delta": position_delta,
+                "groups_flagged": flagged,
+                "groups_total": len(comparable_deltas),
+                "groups_flagged_rate": _rate(flagged, len(comparable_deltas)),
+                "groups_flagged_ci95": _wilson_interval(flagged, len(comparable_deltas)),
+            }
+        )
     return rows
 
 
@@ -256,6 +297,45 @@ def _threshold_margin(scores: list[float], decision_threshold: float) -> float:
     if min(scores) < decision_threshold <= max(scores):
         return 0.0
     return min(abs(score - decision_threshold) for score in scores)
+
+
+def _rate(successes: int, total: int) -> float | None:
+    if total == 0:
+        return None
+    return round(successes / total, 6)
+
+
+def _wilson_interval(successes: int, total: int) -> dict[str, float | int] | None:
+    if total == 0:
+        return None
+
+    z_squared = WILSON_Z * WILSON_Z
+    observed_rate = successes / total
+    denominator = 1 + z_squared / total
+    center = (observed_rate + z_squared / (2 * total)) / denominator
+    spread = (
+        WILSON_Z
+        * ((observed_rate * (1 - observed_rate) + z_squared / (4 * total)) / total) ** 0.5
+        / denominator
+    )
+    return {
+        "lower": round(max(0.0, center - spread), 6),
+        "upper": round(min(1.0, center + spread), 6),
+        "successes": successes,
+        "total": total,
+    }
+
+
+def _format_optional_number(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.6g}"
+
+
+def _format_interval(interval: dict[str, float | int] | None) -> str:
+    if interval is None:
+        return "n/a"
+    return f"[{interval['lower']:.6g}, {interval['upper']:.6g}]"
 
 
 def _sensitivity_steps(base: float, defaults: tuple[float, ...]) -> list[float]:

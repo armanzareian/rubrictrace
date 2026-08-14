@@ -17,7 +17,7 @@ locally with no runtime dependencies and makes no network requests.
 - **Deterministic diagnostics:** produce repeatable findings for local development and CI.
 - **Reviewable evidence:** include compact score ranges, verdict sets, positions, and record IDs.
 - **Agreement metrics:** summarize repeated-judge agreement and threshold sensitivity from the
-  supplied log.
+  supplied log, including deterministic confidence intervals for observed proportions.
 - **Stable fingerprints:** identify findings across report formats and future baselines.
 - **Policy exit codes:** fail only when findings meet the severity threshold you choose.
 - **Labeled evaluation:** measure detector behavior against a small JSON fixture suite.
@@ -297,7 +297,8 @@ before findings are partitioned into active and suppressed sets.
 The `metrics` command reports deterministic summaries over the supplied judgment records:
 
 - repeated case/candidate/rubric groups with run counts, score range, mean score, verdict counts,
-  majority verdict agreement, and distance from the decision threshold;
+  majority verdict agreement, Wilson-score confidence intervals, and distance from the decision
+  threshold;
 - pairwise position-effect rows by case, pair, candidate, and rubric;
 - threshold-sensitivity rows showing how many repeated groups would be flagged at several
   `score_delta` settings;
@@ -306,6 +307,8 @@ The `metrics` command reports deterministic summaries over the supplied judgment
 
 Use `--format json` when feeding the summary into dashboards or notebooks. The output describes
 only the supplied records and should not be read as a broader statement about model quality.
+Confidence intervals are deterministic 95% Wilson-score intervals over observed proportions such as
+verdict agreement and flagged-group rates; they are not random bootstrap estimates.
 
 ## Development
 

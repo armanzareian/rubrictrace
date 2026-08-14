@@ -56,6 +56,10 @@ same case, pair, candidate, and rubric. Threshold sensitivity is bootstrap-free:
 number of observed groups that would be flagged at fixed score-delta and position-delta settings
 plus the active policy thresholds.
 
+Confidence intervals in metrics output use a fixed 95% Wilson-score interval for observed
+proportions, including majority verdict agreement and threshold-sensitivity flagged-group rates.
+They are deterministic, require no resampling, and apply only to the supplied records.
+
 ## Input Adapters
 
 Native JSONL rows are parsed directly into the record model. Generic CSV inputs go through an

@@ -276,18 +276,46 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(2.0, summary["agreement"][0]["score_range"])
         self.assertEqual({"fail": 1, "pass": 1}, summary["agreement"][0]["verdict_counts"])
         self.assertEqual(0.5, summary["agreement"][0]["verdict_agreement"])
+        self.assertEqual(
+            {"lower": 0.094531, "upper": 0.905469, "successes": 1, "total": 2},
+            summary["agreement"][0]["verdict_agreement_ci95"],
+        )
         self.assertEqual(1, len(summary["position_effects"]))
         self.assertEqual(2.0, summary["position_effects"][0]["delta"])
         self.assertIn(
-            {"score_delta": 2.0, "groups_flagged": 1},
+            {
+                "score_delta": 2.0,
+                "groups_flagged": 1,
+                "groups_total": 1,
+                "groups_flagged_rate": 1.0,
+                "groups_flagged_ci95": {
+                    "lower": 0.206549,
+                    "upper": 1.0,
+                    "successes": 1,
+                    "total": 1,
+                },
+            },
             summary["threshold_sensitivity"]["score_instability"],
         )
         self.assertIn(
-            {"position_delta": 1.0, "groups_flagged": 1},
+            {
+                "position_delta": 1.0,
+                "groups_flagged": 1,
+                "groups_total": 1,
+                "groups_flagged_rate": 1.0,
+                "groups_flagged_ci95": {
+                    "lower": 0.206549,
+                    "upper": 1.0,
+                    "successes": 1,
+                    "total": 1,
+                },
+            },
             summary["threshold_sensitivity"]["position_bias"],
         )
+        self.assertEqual("wilson_score", summary["confidence_intervals"]["method"])
         self.assertIn("position_effects:", render_metrics(summary))
         self.assertIn("threshold_sensitivity:", render_metrics(summary))
+        self.assertIn("verdict_agreement_ci95=[0.094531, 0.905469]", render_metrics(summary))
 
 
 if __name__ == "__main__":
