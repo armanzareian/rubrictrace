@@ -310,6 +310,18 @@ only the supplied records and should not be read as a broader statement about mo
 Confidence intervals are deterministic 95% Wilson-score intervals over observed proportions such as
 verdict agreement and flagged-group rates; they are not random bootstrap estimates.
 
+## Labeled Evaluation
+
+The `eval` command compares scanner output against a JSON suite's `expected_issues` labels. Text
+and JSON output include suite-level precision, recall, F1, detector-level metrics, false-positive
+keys, and false-negative keys.
+
+When a detector emits an issue that is not listed in `expected_issues`, the result also includes a
+false-positive review note with the issue key, severity, stable fingerprint, detector message, and
+compact structured evidence. Use these notes to decide whether the labeled suite should include the
+finding or whether policy thresholds or detector behavior need adjustment. The evaluation describes
+only the supplied fixture suite; it is not a benchmark claim about broader model quality.
+
 ## Development
 
 ```bash

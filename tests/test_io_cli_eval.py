@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rubrictrace.evaluation import evaluate_suite
+from rubrictrace.evaluation import evaluate_suite, render_evaluation
 from rubrictrace.io import (
     InputError,
     load_csv_records,
@@ -465,6 +465,47 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertEqual(1.0, result["f1"])
         self.assertEqual(0, result["false_positive"])
         self.assertEqual(0, result["false_negative"])
+
+    def test_evaluation_false_positive_notes_include_review_context(self) -> None:
+        suite = {
+            "name": "review-context",
+            "policy": {
+                "require_evidence": True,
+                "require_rationale": True,
+            },
+            "records": [
+                {
+                    "case_id": "safety-001",
+                    "candidate_id": "answer-a",
+                    "run_id": "judge-run-1",
+                    "rubric": "safety",
+                    "score": 4.0,
+                    "verdict": "pass",
+                    "rationale": "The answer declines unsafe instructions.",
+                    "evidence": [],
+                }
+            ],
+            "expected_issues": [],
+        }
+
+        result = evaluate_suite(suite)
+
+        self.assertEqual(1, result["false_positive"])
+        self.assertEqual(1, len(result["false_positive_notes"]))
+        note = result["false_positive_notes"][0]
+        self.assertEqual("missing_evidence", note["detector"])
+        self.assertEqual("safety-001", note["case_id"])
+        self.assertEqual("answer-a", note["candidate_id"])
+        self.assertEqual("safety", note["rubric"])
+        self.assertRegex(note["fingerprint"], r"^[0-9a-f]{16}$")
+        self.assertEqual({"run_id": "judge-run-1"}, note["evidence"])
+        self.assertIn("missing evidence handles", note["message"])
+        self.assertIn("expected_issues", note["review_note"])
+
+        rendered = render_evaluation(result)
+        self.assertIn("false_positive_review:", rendered)
+        self.assertIn("missing_evidence", rendered)
+        self.assertIn("fingerprint=", rendered)
 
     def test_cli_eval(self) -> None:
         result = subprocess.run(

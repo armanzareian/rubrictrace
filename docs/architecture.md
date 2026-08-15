@@ -32,6 +32,11 @@ summaries instead of findings. It groups repeated case/candidate/rubric records 
 verdict agreement, and groups pairwise records by case, pair, candidate, and rubric for position
 threshold sensitivity.
 
+The evaluation command audits suite records, compares issue keys with `expected_issues`, and reports
+detector-level precision, recall, and F1. False positives carry review notes with the emitted issue
+fingerprint, detector message, severity, and compact structured evidence so a suite maintainer can
+decide whether labels, thresholds, or detector behavior need adjustment.
+
 ## Detector Design
 
 Detectors are intentionally simple and reviewable:

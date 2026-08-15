@@ -17,7 +17,8 @@ def evaluate_suite(suite: dict[str, Any]) -> dict[str, Any]:
     expected = _suite_expected(suite)
     report = audit_records(records, policy)
 
-    actual = {_issue_key(issue) for issue in report.issues}
+    issues_by_key = _issues_by_key(report.issues)
+    actual = set(issues_by_key)
     true_positive = actual & expected
     false_positive = actual - expected
     false_negative = expected - actual
@@ -36,6 +37,9 @@ def evaluate_suite(suite: dict[str, Any]) -> dict[str, Any]:
         "f1": _f1(len(true_positive), len(actual), len(expected)),
         "detectors": detector_metrics,
         "false_positive_keys": [_key_to_dict(key) for key in sorted(false_positive)],
+        "false_positive_notes": [
+            _false_positive_note(issues_by_key[key]) for key in sorted(false_positive)
+        ],
         "false_negative_keys": [_key_to_dict(key) for key in sorted(false_negative)],
     }
 
@@ -65,6 +69,10 @@ def render_evaluation(result: dict[str, Any], *, output_format: str = "text") ->
             lines.append(f"- false_negative {key}")
     else:
         lines.append("mismatches: none")
+    if result.get("false_positive_notes"):
+        lines.append("false_positive_review:")
+        for note in result["false_positive_notes"]:
+            lines.append(f"- {_review_note_line(note)}")
     if result["detectors"]:
         lines.append("detectors:")
         for detector, metrics in result["detectors"].items():
@@ -136,6 +144,13 @@ def _issue_key(issue: Issue) -> IssueKey:
     )
 
 
+def _issues_by_key(issues: tuple[Issue, ...]) -> dict[IssueKey, Issue]:
+    result: dict[IssueKey, Issue] = {}
+    for issue in issues:
+        result.setdefault(_issue_key(issue), issue)
+    return result
+
+
 def _detector_metrics(actual: set[IssueKey], expected: set[IssueKey]) -> dict[str, Any]:
     detectors = sorted({key[0] for key in actual | expected})
     result: dict[str, Any] = {}
@@ -154,6 +169,41 @@ def _detector_metrics(actual: set[IssueKey], expected: set[IssueKey]) -> dict[st
             "f1": _f1(true_positive, len(actual_for_detector), len(expected_for_detector)),
         }
     return result
+
+
+def _false_positive_note(issue: Issue) -> dict[str, Any]:
+    return {
+        "detector": issue.detector,
+        "case_id": issue.case_id,
+        "candidate_id": issue.candidate_id or "",
+        "pair_id": issue.pair_id or "",
+        "rubric": issue.rubric,
+        "severity": issue.severity,
+        "fingerprint": issue.fingerprint,
+        "message": issue.message,
+        "evidence": dict(issue.evidence),
+        "review_note": (
+            "Detector output was not listed in expected_issues; review the suite label "
+            "and add it when intentional, or tune policy thresholds or detector behavior."
+        ),
+    }
+
+
+def _review_note_line(note: dict[str, Any]) -> str:
+    pair = f" pair={note['pair_id']}" if note["pair_id"] else ""
+    evidence = _render_evidence(note["evidence"])
+    if evidence:
+        evidence = f" evidence: {evidence}"
+    return (
+        f"{note['detector']} case={note['case_id']} candidate={note['candidate_id']}"
+        f"{pair} rubric={note['rubric']} severity={note['severity']} "
+        f"fingerprint={note['fingerprint']}: {note['message']}{evidence} "
+        f"review_note={note['review_note']}"
+    )
+
+
+def _render_evidence(evidence: dict[str, Any]) -> str:
+    return ", ".join(f"{key}={value}" for key, value in sorted(evidence.items()))
 
 
 def _ratio(numerator: int, denominator: int) -> float:
