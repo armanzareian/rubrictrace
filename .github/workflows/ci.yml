@@ -25,5 +25,12 @@ jobs:
       - run: make test
       - run: make quality
       - run: make demo
+      - name: Generate audit Markdown summary
+        run: |
+          python -m rubrictrace audit \
+            --records examples/judgments/records.jsonl \
+            --policy examples/judgments/policy.json \
+            --format markdown \
+            --fail-on critical >> "$GITHUB_STEP_SUMMARY"
       - run: make eval
       - run: make metrics

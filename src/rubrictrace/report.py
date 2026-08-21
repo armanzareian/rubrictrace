@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 import json
 
 from .models import AuditReport, Issue
@@ -12,6 +13,8 @@ def render_report(report: AuditReport, *, output_format: str = "text") -> str:
         return json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"
     if output_format == "ci":
         return render_ci_report(report)
+    if output_format == "markdown":
+        return render_markdown_report(report)
     if output_format != "text":
         raise ValueError(f"unsupported output format: {output_format}")
     return render_text_report(report)
@@ -73,8 +76,68 @@ def render_ci_report(report: AuditReport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_markdown_report(report: AuditReport) -> str:
+    counts = report.counts_by_severity()
+    status = "fail" if report.failed() else "pass"
+    lines = [
+        "# RubricTrace Audit",
+        "",
+        "| Status | Records | Active issues | Suppressed | Fail on |",
+        "| --- | ---: | ---: | ---: | --- |",
+        (
+            f"| {_markdown_cell(status)} | {report.records_scanned} | "
+            f"{report.issue_count} | {report.suppressed_issue_count} | "
+            f"{_markdown_cell(report.policy.fail_on)} |"
+        ),
+        "",
+        "## Severity Counts",
+        "",
+        "| Low | Medium | High | Critical |",
+        "| ---: | ---: | ---: | ---: |",
+        (
+            f"| {counts['low']} | {counts['medium']} | "
+            f"{counts['high']} | {counts['critical']} |"
+        ),
+    ]
+
+    if not report.issues:
+        lines.extend(
+            [
+                "",
+                "No unsuppressed issues found.",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+
+    lines.extend(
+        [
+            "",
+            "## Findings",
+            "",
+            "| Severity | Detector | Subject | Message | Fingerprint | Evidence |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    shown = report.issues[:MAX_CI_ISSUES]
+    for issue in shown:
+        lines.append(
+            "| "
+            f"{_markdown_cell(issue.severity)} | "
+            f"{_markdown_cell(issue.detector)} | "
+            f"{_markdown_cell(_issue_subject(issue))} | "
+            f"{_markdown_cell(issue.message)} | "
+            f"{_markdown_cell(issue.fingerprint)} | "
+            f"{_markdown_cell(_evidence_summary(issue))} |"
+        )
+
+    omitted = len(report.issues) - len(shown)
+    if omitted > 0:
+        lines.extend(["", f"{omitted} additional issue(s) omitted from this summary."])
+    return "\n".join(lines) + "\n"
+
+
 def _issue_line(issue: Issue) -> str:
-    evidence = ", ".join(f"{key}={value}" for key, value in issue.evidence.items())
+    evidence = _evidence_summary(issue)
     if evidence:
         evidence = f" evidence: {evidence}"
     return (
@@ -88,3 +151,14 @@ def _issue_subject(issue: Issue) -> str:
     if issue.pair_id:
         subject += f" pair={issue.pair_id}"
     return f"{subject} rubric={issue.rubric}"
+
+
+def _evidence_summary(issue: Issue) -> str:
+    return ", ".join(f"{key}={value}" for key, value in issue.evidence.items())
+
+
+def _markdown_cell(value: object) -> str:
+    text = "" if value is None else str(value)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = escape(text, quote=False)
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")

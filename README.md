@@ -18,6 +18,7 @@ locally with no runtime dependencies and makes no network requests.
 - **Reviewable evidence:** include compact score ranges, verdict sets, positions, and record IDs.
 - **Agreement metrics:** summarize repeated-judge agreement and threshold sensitivity from the
   supplied log, including deterministic confidence intervals for observed proportions.
+- **CI summaries:** render compact Markdown for pull request and job summaries.
 - **Stable fingerprints:** identify findings across report formats and future baselines.
 - **Policy exit codes:** fail only when findings meet the severity threshold you choose.
 - **Labeled evaluation:** measure detector behavior against a small JSON fixture suite.
@@ -273,6 +274,20 @@ rubrictrace audit \
   --severity-override position_bias=high \
   --suppress-fingerprint 0123456789abcdef
 ```
+
+Use Markdown output for pull request comments or GitHub Actions job summaries:
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/records.jsonl \
+  --policy examples/judgments/policy.json \
+  --format markdown \
+  --fail-on critical
+```
+
+Markdown output includes run status, scanned record counts, severity counts, active findings,
+suppressed finding counts, stable fingerprints, and compact structured evidence. It is intended for
+human review in CI surfaces; use `--format json` when another program needs the complete report.
 
 ## Detectors
 

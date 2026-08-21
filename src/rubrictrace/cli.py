@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="CSV field mapping override as field=column; repeat for each mapped field",
     )
     audit.add_argument("--policy", type=Path, help="optional JSON policy")
-    audit.add_argument("--format", choices=("text", "json", "ci"), default="text")
+    audit.add_argument("--format", choices=("text", "json", "ci", "markdown"), default="text")
     audit.add_argument("--fail-on", choices=("low", "medium", "high", "critical"))
     audit.add_argument("--score-delta", type=float)
     audit.add_argument("--position-delta", type=float)

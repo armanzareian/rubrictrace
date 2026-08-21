@@ -285,6 +285,37 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertGreaterEqual(payload["issue_count"], 1)
         self.assertFalse(payload["failed"])
 
+    def test_cli_audit_markdown_summary(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "audit",
+            "--records",
+            str(ROOT / "examples/judgments/records.jsonl"),
+            "--policy",
+            str(ROOT / "examples/judgments/policy.json"),
+            "--format",
+            "markdown",
+            "--fail-on",
+            "critical",
+        ]
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("# RubricTrace Audit", result.stdout)
+        self.assertIn("| Status | Records | Active issues | Suppressed | Fail on |", result.stdout)
+        self.assertIn("score_instability", result.stdout)
+        self.assertIn("fingerprint", result.stdout.lower())
+
     def test_cli_audit_csv_mapping(self) -> None:
         command = [
             sys.executable,

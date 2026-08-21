@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from rubrictrace.models import JudgeRecord, Policy, RubricThresholds
+from rubrictrace.models import AuditReport, Issue, JudgeRecord, Policy, RubricThresholds
 from rubrictrace.metrics import render_metrics, summarize_records
 from rubrictrace.report import render_report
 from rubrictrace.scanner import audit_records
@@ -234,12 +234,41 @@ class ScannerTests(unittest.TestCase):
 
         text = render_report(report, output_format="text")
         ci = render_report(report, output_format="ci")
+        markdown = render_report(report, output_format="markdown")
         rendered_json = render_report(report, output_format="json")
 
         self.assertEqual(fingerprints, [issue.fingerprint for issue in report.issues])
         self.assertIn(fingerprints[0], text)
         self.assertIn(fingerprints[0], ci)
+        self.assertIn(fingerprints[0], markdown)
         self.assertIn(fingerprints[0], rendered_json)
+
+    def test_markdown_report_escapes_table_cells(self) -> None:
+        report = AuditReport(
+            records_scanned=1,
+            issues=(
+                Issue(
+                    detector="missing_evidence",
+                    severity="high",
+                    case_id="case|9",
+                    candidate_id="answer-a",
+                    rubric="safety",
+                    message="review case|9\nbefore release",
+                    fingerprint="0123456789abcdef",
+                    evidence={"run_id": "judge|one\nnext-line"},
+                ),
+            ),
+            policy=Policy(fail_on="high"),
+        )
+
+        rendered = render_report(report, output_format="markdown")
+
+        self.assertIn("# RubricTrace Audit", rendered)
+        self.assertIn("| Status | Records | Active issues | Suppressed | Fail on |", rendered)
+        self.assertIn("case=case\\|9", rendered)
+        self.assertIn("review case\\|9<br>before release", rendered)
+        self.assertIn("judge\\|one<br>next-line", rendered)
+        self.assertIn("0123456789abcdef", rendered)
 
     def test_metrics_summarize_agreement_and_threshold_sensitivity(self) -> None:
         records = (

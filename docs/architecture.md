@@ -10,7 +10,7 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 - `rubrictrace.models` defines records, policy controls, issues, reports, and severity ordering.
 - `rubrictrace.scanner` runs deterministic detectors over normalized records.
 - `rubrictrace.metrics` summarizes repeated-judge agreement and threshold sensitivity.
-- `rubrictrace.report` renders text, JSON, and compact CI reports.
+- `rubrictrace.report` renders text, JSON, compact CI, and Markdown summary reports.
 - `rubrictrace.evaluation` compares scanner output against labeled fixture suites.
 - `rubrictrace.cli` wires the commands, output formats, and exit codes.
 
@@ -23,7 +23,7 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 4. Enabled detectors emit `Issue` values with stable fingerprints.
 5. Severity overrides are applied before reviewed-fingerprint suppressions partition findings into
    active and suppressed sets.
-6. The report renderer emits text, JSON, or compact CI output.
+6. The report renderer emits text, JSON, compact CI, or Markdown summary output.
 7. The CLI exits with `1` only when an active finding meets or exceeds the configured severity
    threshold.
 
