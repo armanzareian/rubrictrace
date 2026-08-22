@@ -32,5 +32,14 @@ jobs:
             --policy examples/judgments/policy.json \
             --format markdown \
             --fail-on critical >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate audit SARIF report
+        run: |
+          python -m rubrictrace audit \
+            --records examples/judgments/records.jsonl \
+            --policy examples/judgments/policy.json \
+            --format sarif \
+            --fail-on critical > rubrictrace.sarif
+          python -m json.tool rubrictrace.sarif > /dev/null
       - run: make eval
       - run: make metrics
+      - run: make sarif

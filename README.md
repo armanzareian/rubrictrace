@@ -19,6 +19,7 @@ locally with no runtime dependencies and makes no network requests.
 - **Agreement metrics:** summarize repeated-judge agreement and threshold sensitivity from the
   supplied log, including deterministic confidence intervals for observed proportions.
 - **CI summaries:** render compact Markdown for pull request and job summaries.
+- **SARIF findings:** emit active audit findings for code-scanning and security-review workflows.
 - **Stable fingerprints:** identify findings across report formats and future baselines.
 - **Policy exit codes:** fail only when findings meet the severity threshold you choose.
 - **Labeled evaluation:** measure detector behavior against a small JSON fixture suite.
@@ -288,6 +289,20 @@ rubrictrace audit \
 Markdown output includes run status, scanned record counts, severity counts, active findings,
 suppressed finding counts, stable fingerprints, and compact structured evidence. It is intended for
 human review in CI surfaces; use `--format json` when another program needs the complete report.
+
+Use SARIF output when a code-scanning or security-review system should ingest active findings:
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/records.jsonl \
+  --policy examples/judgments/policy.json \
+  --format sarif \
+  --fail-on critical > rubrictrace.sarif
+```
+
+SARIF output uses detector names as rule IDs, maps high and critical findings to `error`, records
+stable RubricTrace fingerprints under `partialFingerprints`, and points each finding at the audit
+input path plus a logical location for the affected case, candidate, and rubric.
 
 ## Detectors
 

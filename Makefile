@@ -1,4 +1,4 @@
-.PHONY: test quality demo eval metrics
+.PHONY: test quality demo eval metrics sarif
 
 PYTHON ?= python3
 
@@ -22,3 +22,10 @@ metrics:
 	PYTHONPATH=src $(PYTHON) -m rubrictrace metrics \
 		--records examples/judgments/records.jsonl \
 		--policy examples/judgments/policy.json
+
+sarif:
+	PYTHONPATH=src $(PYTHON) -m rubrictrace audit \
+		--records examples/judgments/records.jsonl \
+		--policy examples/judgments/policy.json \
+		--format sarif \
+		--fail-on critical

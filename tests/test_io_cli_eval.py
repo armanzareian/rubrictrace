@@ -316,6 +316,46 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertIn("score_instability", result.stdout)
         self.assertIn("fingerprint", result.stdout.lower())
 
+    def test_cli_audit_sarif_output(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "audit",
+            "--records",
+            str(ROOT / "examples/judgments/records.jsonl"),
+            "--policy",
+            str(ROOT / "examples/judgments/policy.json"),
+            "--format",
+            "sarif",
+            "--fail-on",
+            "critical",
+        ]
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual("2.1.0", payload["version"])
+        run = payload["runs"][0]
+        self.assertEqual(6, len(run["results"]))
+        self.assertEqual("RubricTrace", run["tool"]["driver"]["name"])
+        self.assertEqual(
+            "examples/judgments/records.jsonl",
+            run["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
+        )
+        self.assertRegex(
+            run["results"][0]["partialFingerprints"]["rubricTraceFingerprint"],
+            r"^[0-9a-f]{16}$",
+        )
+
     def test_cli_audit_csv_mapping(self) -> None:
         command = [
             sys.executable,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from rubrictrace.models import AuditReport, Issue, JudgeRecord, Policy, RubricThresholds
@@ -235,12 +236,14 @@ class ScannerTests(unittest.TestCase):
         text = render_report(report, output_format="text")
         ci = render_report(report, output_format="ci")
         markdown = render_report(report, output_format="markdown")
+        sarif = render_report(report, output_format="sarif")
         rendered_json = render_report(report, output_format="json")
 
         self.assertEqual(fingerprints, [issue.fingerprint for issue in report.issues])
         self.assertIn(fingerprints[0], text)
         self.assertIn(fingerprints[0], ci)
         self.assertIn(fingerprints[0], markdown)
+        self.assertIn(fingerprints[0], sarif)
         self.assertIn(fingerprints[0], rendered_json)
 
     def test_markdown_report_escapes_table_cells(self) -> None:
@@ -269,6 +272,73 @@ class ScannerTests(unittest.TestCase):
         self.assertIn("review case\\|9<br>before release", rendered)
         self.assertIn("judge\\|one<br>next-line", rendered)
         self.assertIn("0123456789abcdef", rendered)
+
+    def test_sarif_report_contains_machine_readable_findings(self) -> None:
+        report = AuditReport(
+            records_scanned=3,
+            issues=(
+                Issue(
+                    detector="score_instability",
+                    severity="high",
+                    case_id="case-10",
+                    candidate_id="answer-j",
+                    rubric="groundedness",
+                    message="repeated judgments have a large score range",
+                    fingerprint="0123456789abcdef",
+                    evidence={"min_score": 1.0, "max_score": 4.0},
+                ),
+            ),
+            suppressed_issues=(
+                Issue(
+                    detector="missing_evidence",
+                    severity="medium",
+                    case_id="case-11",
+                    candidate_id="answer-k",
+                    rubric="safety",
+                    message="judgment record is missing evidence handles",
+                    fingerprint="abcdef0123456789",
+                    evidence={"run_id": "judge-run-1"},
+                ),
+            ),
+            policy=Policy(fail_on="high"),
+        )
+
+        payload = json.loads(
+            render_report(
+                report,
+                output_format="sarif",
+                source_uri="examples/judgments/records.jsonl",
+            )
+        )
+
+        self.assertEqual("2.1.0", payload["version"])
+        run = payload["runs"][0]
+        self.assertEqual("RubricTrace", run["tool"]["driver"]["name"])
+        self.assertEqual(1, run["properties"]["activeIssueCount"])
+        self.assertEqual(1, run["properties"]["suppressedIssueCount"])
+        self.assertEqual(
+            ["score_instability"],
+            [rule["id"] for rule in run["tool"]["driver"]["rules"]],
+        )
+        self.assertEqual(1, len(run["results"]))
+
+        result = run["results"][0]
+        self.assertEqual("score_instability", result["ruleId"])
+        self.assertEqual("error", result["level"])
+        self.assertEqual(
+            {"rubricTraceFingerprint": "0123456789abcdef"},
+            result["partialFingerprints"],
+        )
+        self.assertEqual("case-10", result["properties"]["caseId"])
+        self.assertEqual({"min_score": 1.0, "max_score": 4.0}, result["properties"]["evidence"])
+        self.assertEqual(
+            "examples/judgments/records.jsonl",
+            result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
+        )
+        self.assertIn(
+            "case=case-10",
+            result["locations"][0]["logicalLocations"][0]["fullyQualifiedName"],
+        )
 
     def test_metrics_summarize_agreement_and_threshold_sensitivity(self) -> None:
         records = (

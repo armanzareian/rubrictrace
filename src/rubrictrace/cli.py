@@ -72,7 +72,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="CSV field mapping override as field=column; repeat for each mapped field",
     )
     audit.add_argument("--policy", type=Path, help="optional JSON policy")
-    audit.add_argument("--format", choices=("text", "json", "ci", "markdown"), default="text")
+    audit.add_argument(
+        "--format",
+        choices=("text", "json", "ci", "markdown", "sarif"),
+        default="text",
+    )
     audit.add_argument("--fail-on", choices=("low", "medium", "high", "critical"))
     audit.add_argument("--score-delta", type=float)
     audit.add_argument("--position-delta", type=float)
@@ -134,7 +138,14 @@ def _run_audit(args: argparse.Namespace) -> int:
         suppressions=args.suppress_fingerprint,
     )
     report = audit_records(records, policy)
-    print(render_report(report, output_format=args.format), end="")
+    print(
+        render_report(
+            report,
+            output_format=args.format,
+            source_uri=_repo_relative_path(args.records),
+        ),
+        end="",
+    )
     return 1 if report.failed() else 0
 
 
@@ -204,3 +215,10 @@ def _parse_field_mapping(
             raise ValueError(f"{label} mapping column must be non-empty")
         mapping[normalized_field] = column.strip()
     return mapping
+
+
+def _repo_relative_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()

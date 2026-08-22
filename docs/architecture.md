@@ -10,7 +10,7 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 - `rubrictrace.models` defines records, policy controls, issues, reports, and severity ordering.
 - `rubrictrace.scanner` runs deterministic detectors over normalized records.
 - `rubrictrace.metrics` summarizes repeated-judge agreement and threshold sensitivity.
-- `rubrictrace.report` renders text, JSON, compact CI, and Markdown summary reports.
+- `rubrictrace.report` renders text, JSON, compact CI, Markdown summary, and SARIF reports.
 - `rubrictrace.evaluation` compares scanner output against labeled fixture suites.
 - `rubrictrace.cli` wires the commands, output formats, and exit codes.
 
@@ -23,7 +23,7 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 4. Enabled detectors emit `Issue` values with stable fingerprints.
 5. Severity overrides are applied before reviewed-fingerprint suppressions partition findings into
    active and suppressed sets.
-6. The report renderer emits text, JSON, compact CI, or Markdown summary output.
+6. The report renderer emits text, JSON, compact CI, Markdown summary, or SARIF output.
 7. The CLI exits with `1` only when an active finding meets or exceeds the configured severity
    threshold.
 
@@ -36,6 +36,11 @@ The evaluation command audits suite records, compares issue keys with `expected_
 detector-level precision, recall, and F1. False positives carry review notes with the emitted issue
 fingerprint, detector message, severity, and compact structured evidence so a suite maintainer can
 decide whether labels, thresholds, or detector behavior need adjustment.
+
+SARIF report output includes active findings as SARIF results, detector names as rule IDs, stable
+RubricTrace fingerprints in `partialFingerprints`, run-level counts, and the audit input path as a
+physical location when the CLI can provide it. Suppressed findings are not emitted as results, but
+their count remains available on the run properties.
 
 ## Detector Design
 
