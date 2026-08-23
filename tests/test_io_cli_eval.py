@@ -10,6 +10,7 @@ from pathlib import Path
 from rubrictrace.evaluation import evaluate_suite, render_evaluation
 from rubrictrace.io import (
     InputError,
+    load_baseline,
     load_csv_records,
     load_pairwise_csv_records,
     load_policy,
@@ -110,6 +111,46 @@ class IoCliEvaluationTests(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("rubric_thresholds.groundedness.score_delta", message)
         self.assertNotIn("secret", message)
+
+    def test_load_baseline_accepts_reviewed_fingerprints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "baseline.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "suppressions": [
+                            "0123456789ABCDEF",
+                            {
+                                "fingerprint": "abcdef0123456789",
+                                "reason": "accepted known judge disagreement",
+                            },
+                        ],
+                        "issues": [{"fingerprint": "0123456789abcdef"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            fingerprints = load_baseline(path)
+
+        self.assertEqual(("0123456789abcdef", "abcdef0123456789"), fingerprints)
+
+    def test_load_baseline_rejects_bad_fingerprint_without_echoing_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "baseline.json"
+            path.write_text(
+                json.dumps({"suppressions": [{"fingerprint": "secret-not-a-fingerprint"}]}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(InputError) as caught:
+                load_baseline(path)
+
+        message = str(caught.exception)
+        self.assertIn("baseline.json: suppressions[0]", message)
+        self.assertIn("16-character hexadecimal", message)
+        self.assertNotIn("secret-not-a-fingerprint", message)
 
     def test_csv_mapping_loads_auditable_records(self) -> None:
         records = load_csv_records(ROOT / "examples/judgments/records.csv", CSV_MAPPING)
@@ -526,6 +567,43 @@ class IoCliEvaluationTests(unittest.TestCase):
         self.assertIn("suppressed=1", result.stdout)
         self.assertIn("threshold_flip", result.stdout)
         self.assertNotIn(score_fingerprint, result.stdout)
+
+    def test_cli_audit_baseline_file_suppresses_reviewed_fingerprint(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "audit",
+            "--records",
+            str(ROOT / "examples/judgments/records.jsonl"),
+            "--policy",
+            str(ROOT / "examples/judgments/policy.json"),
+            "--baseline",
+            str(ROOT / "examples/judgments/baseline.json"),
+            "--format",
+            "json",
+            "--fail-on",
+            "critical",
+        ]
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(5, payload["issue_count"])
+        self.assertEqual(1, payload["suppressed_issue_count"])
+        self.assertEqual("f12055616ce670c7", payload["suppressed_issues"][0]["fingerprint"])
+        self.assertNotIn(
+            "f12055616ce670c7",
+            {issue["fingerprint"] for issue in payload["issues"]},
+        )
 
     def test_evaluation_suite_matches_expected_issues(self) -> None:
         suite = json.loads((ROOT / "examples/judgments/suite.json").read_text(encoding="utf-8"))

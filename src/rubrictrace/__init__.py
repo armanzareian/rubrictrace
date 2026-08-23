@@ -2,6 +2,7 @@
 
 from .io import (
     InputError,
+    load_baseline,
     load_csv_records,
     load_pairwise_csv_records,
     load_policy,
@@ -20,6 +21,7 @@ __all__ = [
     "Policy",
     "RubricThresholds",
     "audit_records",
+    "load_baseline",
     "load_csv_records",
     "load_pairwise_csv_records",
     "load_policy",

@@ -5,8 +5,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 ## Components
 
 - `rubrictrace.io` loads JSONL judgment records, explicitly mapped CSV records, pairwise CSV
-  comparison exports, single-answer rubric CSV exports, and JSON policies with bounded file-size
-  checks.
+  comparison exports, single-answer rubric CSV exports, JSON policies, and baseline files with
+  bounded file-size checks.
 - `rubrictrace.models` defines records, policy controls, issues, reports, and severity ordering.
 - `rubrictrace.scanner` runs deterministic detectors over normalized records.
 - `rubrictrace.metrics` summarizes repeated-judge agreement and threshold sensitivity.
@@ -18,7 +18,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 
 1. The loader parses JSONL rows, mapped CSV rows, expanded pairwise CSV comparisons, or expanded
    rubric CSV score columns into `JudgeRecord` values.
-2. A `Policy` is created from defaults, an optional policy file, and CLI overrides.
+2. A `Policy` is created from defaults, an optional policy file, reviewed baseline fingerprints,
+   and CLI overrides.
 3. The scanner groups records by stable case, candidate, rubric, and pairwise identifiers.
 4. Enabled detectors emit `Issue` values with stable fingerprints.
 5. Severity overrides are applied before reviewed-fingerprint suppressions partition findings into
@@ -41,6 +42,12 @@ SARIF report output includes active findings as SARIF results, detector names as
 RubricTrace fingerprints in `partialFingerprints`, run-level counts, and the audit input path as a
 physical location when the CLI can provide it. Suppressed findings are not emitted as results, but
 their count remains available on the run properties.
+
+Baseline files are JSON objects containing reviewed finding fingerprints. The baseline loader
+accepts explicit `suppressions` or report-shaped `findings`, `issues`, and `suppressed_issues`
+arrays. Each entry may be a fingerprint string or an object with a `fingerprint` field. Baseline
+fingerprints are merged with policy suppressions and one-off CLI suppressions before the scanner
+partitions active and suppressed issues.
 
 ## Detector Design
 

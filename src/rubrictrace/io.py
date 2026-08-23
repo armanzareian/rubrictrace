@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from .models import JudgeRecord, ModelError, Policy
+from .models import FINGERPRINT_PATTERN, JudgeRecord, ModelError, Policy
 
 MAX_INPUT_BYTES = 10 * 1024 * 1024
 CSV_FIELDS: tuple[str, ...] = (
@@ -219,6 +219,36 @@ def load_policy(path: Path | None) -> Policy:
         raise InputError(str(exc)) from exc
 
 
+def load_baseline(path: Path | None) -> tuple[str, ...]:
+    if path is None:
+        return ()
+    _check_file(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise InputError(f"{path}: invalid JSON: {exc.msg}") from exc
+    if not isinstance(data, dict):
+        raise InputError(f"{path}: expected a JSON object")
+
+    fingerprints: list[str] = []
+    if "suppressions" in data:
+        fingerprints.extend(_baseline_fingerprints(data["suppressions"], f"{path}: suppressions"))
+    if "findings" in data:
+        fingerprints.extend(_baseline_fingerprints(data["findings"], f"{path}: findings"))
+    if "issues" in data:
+        fingerprints.extend(_baseline_fingerprints(data["issues"], f"{path}: issues"))
+    if "suppressed_issues" in data:
+        fingerprints.extend(
+            _baseline_fingerprints(data["suppressed_issues"], f"{path}: suppressed_issues")
+        )
+
+    if not any(field_name in data for field_name in _BASELINE_FIELDS):
+        raise InputError(
+            f"{path}: baseline must include suppressions, findings, issues, or suppressed_issues"
+        )
+    return tuple(dict.fromkeys(fingerprints))
+
+
 def load_suite(path: Path) -> dict[str, Any]:
     _check_file(path)
     try:
@@ -238,6 +268,35 @@ def _check_file(path: Path) -> None:
     size = path.stat().st_size
     if size > MAX_INPUT_BYTES:
         raise InputError(f"{path}: file exceeds {MAX_INPUT_BYTES} bytes")
+
+
+_BASELINE_FIELDS = {"suppressions", "findings", "issues", "suppressed_issues"}
+
+
+def _baseline_fingerprints(value: Any, source: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise InputError(f"{source} must be a list")
+
+    fingerprints: list[str] = []
+    for index, item in enumerate(value):
+        item_source = f"{source}[{index}]"
+        if isinstance(item, str):
+            fingerprint = item
+        elif isinstance(item, dict):
+            fingerprint = item.get("fingerprint")
+        else:
+            raise InputError(f"{item_source} must be a fingerprint or an object with fingerprint")
+        fingerprints.append(_baseline_fingerprint(fingerprint, item_source))
+    return tuple(fingerprints)
+
+
+def _baseline_fingerprint(value: Any, source: str) -> str:
+    if not isinstance(value, str):
+        raise InputError(f"{source} fingerprint must be a string")
+    fingerprint = value.strip().lower()
+    if FINGERPRINT_PATTERN.fullmatch(fingerprint) is None:
+        raise InputError(f"{source} fingerprint must be a 16-character hexadecimal value")
+    return fingerprint
 
 
 def _validate_csv_mapping(field_mapping: Mapping[str, str]) -> None:

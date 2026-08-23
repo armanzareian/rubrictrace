@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "suppressions": [
+    {
+      "fingerprint": "f12055616ce670c7",
+      "reason": "reviewed repeated groundedness score range in the sample fixture"
+    }
+  ]
+}

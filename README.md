@@ -20,7 +20,8 @@ locally with no runtime dependencies and makes no network requests.
   supplied log, including deterministic confidence intervals for observed proportions.
 - **CI summaries:** render compact Markdown for pull request and job summaries.
 - **SARIF findings:** emit active audit findings for code-scanning and security-review workflows.
-- **Stable fingerprints:** identify findings across report formats and future baselines.
+- **Stable fingerprints:** identify findings across report formats and baseline files.
+- **Reviewed baselines:** suppress known reviewed findings without hiding new issues.
 - **Policy exit codes:** fail only when findings meet the severity threshold you choose.
 - **Labeled evaluation:** measure detector behavior against a small JSON fixture suite.
 - **Small integration surface:** use the CLI, or call the typed Python API directly.
@@ -276,6 +277,37 @@ rubrictrace audit \
   --suppress-fingerprint 0123456789abcdef
 ```
 
+Reviewed baselines can keep CI focused on new findings while preserving the reviewed findings in
+JSON output under `suppressed_issues`:
+
+```bash
+rubrictrace audit \
+  --records examples/judgments/records.jsonl \
+  --policy examples/judgments/policy.json \
+  --baseline examples/judgments/baseline.json \
+  --format ci \
+  --fail-on critical
+```
+
+Baseline files are JSON objects with reviewed fingerprints:
+
+```json
+{
+  "version": 1,
+  "suppressions": [
+    {
+      "fingerprint": "f12055616ce670c7",
+      "reason": "reviewed repeated groundedness score range"
+    }
+  ]
+}
+```
+
+`suppressions` may contain fingerprint strings or objects with a `fingerprint` field. RubricTrace
+also accepts `findings`, `issues`, and `suppressed_issues` arrays with fingerprint objects, so a
+reviewed JSON audit report can be reused as a baseline input. Policy-file suppressions,
+`--baseline`, and repeated `--suppress-fingerprint` flags are merged and deduplicated.
+
 Use Markdown output for pull request comments or GitHub Actions job summaries:
 
 ```bash
@@ -360,6 +392,8 @@ make quality
 make demo
 make eval
 make metrics
+make sarif
+make baseline
 ```
 
 The project is intentionally dependency-light. Optional `ruff` and `mypy` configuration is included
@@ -370,10 +404,13 @@ for teams that want stricter local checks.
 ```python
 from pathlib import Path
 
-from rubrictrace import audit_records, load_policy, load_records, summarize_records
+from rubrictrace import audit_records, load_baseline, load_policy, load_records, summarize_records
 
 records = load_records(Path("examples/judgments/records.jsonl"))
 policy = load_policy(Path("examples/judgments/policy.json"))
+policy = policy.with_overrides(
+    suppressions=load_baseline(Path("examples/judgments/baseline.json"))
+)
 report = audit_records(records, policy)
 
 for issue in report.issues:

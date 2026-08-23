@@ -12,6 +12,7 @@ from .io import (
     PAIRWISE_CSV_FIELDS,
     RUBRIC_CSV_FIELDS,
     InputError,
+    load_baseline,
     load_csv_records,
     load_pairwise_csv_records,
     load_policy,
@@ -73,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit.add_argument("--policy", type=Path, help="optional JSON policy")
     audit.add_argument(
+        "--baseline",
+        type=Path,
+        help="optional JSON baseline of reviewed finding fingerprints",
+    )
+    audit.add_argument(
         "--format",
         choices=("text", "json", "ci", "markdown", "sarif"),
         default="text",
@@ -126,6 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _run_audit(args: argparse.Namespace) -> int:
     records = _load_audit_records(args)
+    suppressions = _audit_suppressions(args)
     policy = load_policy(args.policy).with_overrides(
         fail_on=args.fail_on,
         score_delta=args.score_delta,
@@ -135,7 +142,7 @@ def _run_audit(args: argparse.Namespace) -> int:
         require_rationale=False if args.allow_missing_rationale else None,
         disabled_detectors=args.disable_detector,
         severity_overrides=_parse_severity_overrides(args.severity_override),
-        suppressions=args.suppress_fingerprint,
+        suppressions=suppressions,
     )
     report = audit_records(records, policy)
     print(
@@ -170,6 +177,11 @@ def _load_audit_records(args: argparse.Namespace) -> tuple[JudgeRecord, ...]:
             _parse_field_mapping(args.field_mapping, RUBRIC_CSV_FIELDS, "rubric CSV"),
         )
     raise ValueError(f"unsupported input format: {args.input_format}")
+
+
+def _audit_suppressions(args: argparse.Namespace) -> tuple[str, ...] | None:
+    values = (*load_baseline(args.baseline), *(args.suppress_fingerprint or ()))
+    return values or None
 
 
 def _run_eval(args: argparse.Namespace) -> int:

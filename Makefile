@@ -1,4 +1,4 @@
-.PHONY: test quality demo eval metrics sarif
+.PHONY: test quality demo eval metrics sarif baseline
 
 PYTHON ?= python3
 
@@ -28,4 +28,12 @@ sarif:
 		--records examples/judgments/records.jsonl \
 		--policy examples/judgments/policy.json \
 		--format sarif \
+		--fail-on critical
+
+baseline:
+	PYTHONPATH=src $(PYTHON) -m rubrictrace audit \
+		--records examples/judgments/records.jsonl \
+		--policy examples/judgments/policy.json \
+		--baseline examples/judgments/baseline.json \
+		--format ci \
 		--fail-on critical
