@@ -11,6 +11,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 - `rubrictrace.scanner` runs deterministic detectors over normalized records.
 - `rubrictrace.metrics` summarizes repeated-judge agreement and threshold sensitivity.
 - `rubrictrace.report` renders text, JSON, compact CI, Markdown summary, and SARIF reports.
+- `rubrictrace.ci` renders deterministic GitHub Actions audit steps for advisory summaries and
+  strict baseline-aware gates.
 - `rubrictrace.evaluation` compares scanner output against labeled fixture suites.
 - `rubrictrace.cli` wires the commands, output formats, and exit codes.
 
@@ -48,6 +50,11 @@ accepts explicit `suppressions` or report-shaped `findings`, `issues`, and `supp
 arrays. Each entry may be a fingerprint string or an object with a `fingerprint` field. Baseline
 fingerprints are merged with policy suppressions and one-off CLI suppressions before the scanner
 partitions active and suppressed issues.
+
+The CI template renderer does not inspect records or execute scans. It renders shell-safe GitHub
+Actions steps that pass the same records, policy, baseline, input-format, and CSV mapping arguments
+to `rubrictrace audit`. Advisory steps emit Markdown to the job summary with `continue-on-error`;
+strict steps emit compact CI output and rely on the audit exit code for enforcement.
 
 ## Detector Design
 

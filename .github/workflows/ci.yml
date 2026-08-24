@@ -44,3 +44,4 @@ jobs:
       - run: make metrics
       - run: make sarif
       - run: make baseline
+      - run: make ci-template

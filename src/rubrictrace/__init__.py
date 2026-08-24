@@ -1,5 +1,6 @@
 """Offline audits for LLM-as-judge result logs."""
 
+from .ci import CiTemplateOptions, render_github_actions_steps
 from .io import (
     InputError,
     load_baseline,
@@ -15,6 +16,7 @@ from .scanner import audit_records
 
 __all__ = [
     "AuditReport",
+    "CiTemplateOptions",
     "InputError",
     "Issue",
     "JudgeRecord",
@@ -27,6 +29,7 @@ __all__ = [
     "load_policy",
     "load_records",
     "load_rubric_csv_records",
+    "render_github_actions_steps",
     "render_metrics",
     "summarize_records",
 ]

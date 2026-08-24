@@ -308,6 +308,24 @@ also accepts `findings`, `issues`, and `suppressed_issues` arrays with fingerpri
 reviewed JSON audit report can be reused as a baseline input. Policy-file suppressions,
 `--baseline`, and repeated `--suppress-fingerprint` flags are merged and deduplicated.
 
+Render baseline-aware GitHub Actions steps when you want one advisory summary and one strict
+gate from the same audit inputs:
+
+```bash
+rubrictrace ci-template \
+  --records examples/judgments/records.jsonl \
+  --policy examples/judgments/policy.json \
+  --baseline examples/judgments/baseline.json \
+  --mode both \
+  --strict-fail-on high
+```
+
+The advisory step writes a Markdown report to `$GITHUB_STEP_SUMMARY` and uses
+`continue-on-error: true`, so reviewers can inspect unsuppressed findings without failing the job.
+The strict step uses compact CI output and exits nonzero when an active finding meets the selected
+severity threshold. Suppressed baseline findings are counted in both steps but do not trigger the
+strict gate.
+
 Use Markdown output for pull request comments or GitHub Actions job summaries:
 
 ```bash

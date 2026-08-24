@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from rubrictrace.ci import CiTemplateOptions, render_github_actions_steps
 from rubrictrace.evaluation import evaluate_suite, render_evaluation
 from rubrictrace.io import (
     InputError,
@@ -604,6 +605,56 @@ class IoCliEvaluationTests(unittest.TestCase):
             "f12055616ce670c7",
             {issue["fingerprint"] for issue in payload["issues"]},
         )
+
+    def test_ci_template_renders_advisory_and_strict_baseline_steps(self) -> None:
+        rendered = render_github_actions_steps(
+            CiTemplateOptions(
+                records="examples/judgments/records.jsonl",
+                policy="examples/judgments/policy.json",
+                baseline="examples/judgments/baseline.json",
+            )
+        )
+
+        self.assertIn("- name: RubricTrace advisory audit with baseline", rendered)
+        self.assertIn("  continue-on-error: true", rendered)
+        self.assertIn("--format markdown", rendered)
+        self.assertIn("--fail-on low", rendered)
+        self.assertIn('low >> "$GITHUB_STEP_SUMMARY"', rendered)
+        self.assertIn("- name: RubricTrace strict audit gate with baseline", rendered)
+        self.assertIn("--format ci", rendered)
+        self.assertIn("--fail-on high", rendered)
+        self.assertEqual(2, rendered.count("--baseline"))
+
+    def test_cli_ci_template_outputs_github_actions_steps(self) -> None:
+        command = [
+            sys.executable,
+            "-m",
+            "rubrictrace",
+            "ci-template",
+            "--records",
+            "examples/judgments/records.jsonl",
+            "--policy",
+            "examples/judgments/policy.json",
+            "--baseline",
+            "examples/judgments/baseline.json",
+            "--mode",
+            "both",
+        ]
+
+        result = subprocess.run(
+            command,
+            check=False,
+            cwd=ROOT,
+            env={"PYTHONPATH": "src"},
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("- name: RubricTrace advisory audit with baseline", result.stdout)
+        self.assertIn("- name: RubricTrace strict audit gate with baseline", result.stdout)
+        self.assertIn("--baseline examples/judgments/baseline.json", result.stdout)
+        self.assertEqual(2, result.stdout.count("--baseline"))
 
     def test_evaluation_suite_matches_expected_issues(self) -> None:
         suite = json.loads((ROOT / "examples/judgments/suite.json").read_text(encoding="utf-8"))

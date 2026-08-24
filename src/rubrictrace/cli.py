@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
+from .ci import (
+    CI_TEMPLATE_MODES,
+    INPUT_FORMATS,
+    CiTemplateOptions,
+    render_github_actions_steps,
+)
 from .evaluation import evaluate_suite, evaluation_failed, render_evaluation
 from .io import (
     CSV_FIELDS,
@@ -44,6 +50,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_eval(args)
         if args.command == "metrics":
             return _run_metrics(args)
+        if args.command == "ci-template":
+            return _run_ci_template(args)
     except (InputError, ModelError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -127,6 +135,53 @@ def build_parser() -> argparse.ArgumentParser:
     metrics.add_argument("--policy", type=Path, help="optional JSON policy")
     metrics.add_argument("--format", choices=("text", "json"), default="text")
 
+    ci_template = subparsers.add_parser(
+        "ci-template",
+        help="render GitHub Actions audit steps",
+    )
+    ci_template.add_argument("--records", required=True, type=Path, help="judgment records")
+    ci_template.add_argument(
+        "--input-format",
+        choices=INPUT_FORMATS,
+        default="jsonl",
+        help="records input format",
+    )
+    ci_template.add_argument(
+        "--map",
+        action="append",
+        dest="field_mapping",
+        help="CSV field mapping override as field=column; repeat for each mapped field",
+    )
+    ci_template.add_argument("--policy", type=Path, help="optional JSON policy")
+    ci_template.add_argument(
+        "--baseline",
+        type=Path,
+        help="optional JSON baseline of reviewed finding fingerprints",
+    )
+    ci_template.add_argument(
+        "--mode",
+        choices=CI_TEMPLATE_MODES,
+        default="both",
+        help="which GitHub Actions steps to render",
+    )
+    ci_template.add_argument(
+        "--advisory-fail-on",
+        choices=("low", "medium", "high", "critical"),
+        default="low",
+        help="severity threshold surfaced by the advisory step",
+    )
+    ci_template.add_argument(
+        "--strict-fail-on",
+        choices=("low", "medium", "high", "critical"),
+        default="high",
+        help="severity threshold enforced by the strict step",
+    )
+    ci_template.add_argument(
+        "--python-command",
+        default="python -m rubrictrace",
+        help="command prefix used inside rendered steps",
+    )
+
     return parser
 
 
@@ -195,6 +250,26 @@ def _run_metrics(args: argparse.Namespace) -> int:
     records = _load_audit_records(args)
     policy = load_policy(args.policy)
     print(render_metrics(summarize_records(records, policy), output_format=args.format), end="")
+    return 0
+
+
+def _run_ci_template(args: argparse.Namespace) -> int:
+    print(
+        render_github_actions_steps(
+            CiTemplateOptions(
+                records=args.records.as_posix(),
+                input_format=args.input_format,
+                field_mapping=tuple(args.field_mapping or ()),
+                policy=args.policy.as_posix() if args.policy else None,
+                baseline=args.baseline.as_posix() if args.baseline else None,
+                advisory_fail_on=args.advisory_fail_on,
+                strict_fail_on=args.strict_fail_on,
+                python_command=args.python_command,
+            ),
+            mode=args.mode,
+        ),
+        end="",
+    )
     return 0
 
 

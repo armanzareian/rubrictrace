@@ -1,4 +1,4 @@
-.PHONY: test quality demo eval metrics sarif baseline
+.PHONY: test quality demo eval metrics sarif baseline ci-template
 
 PYTHON ?= python3
 
@@ -37,3 +37,11 @@ baseline:
 		--baseline examples/judgments/baseline.json \
 		--format ci \
 		--fail-on critical
+
+ci-template:
+	PYTHONPATH=src $(PYTHON) -m rubrictrace ci-template \
+		--records examples/judgments/records.jsonl \
+		--policy examples/judgments/policy.json \
+		--baseline examples/judgments/baseline.json \
+		--mode both \
+		--strict-fail-on critical
