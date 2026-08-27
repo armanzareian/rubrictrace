@@ -45,3 +45,4 @@ jobs:
       - run: make sarif
       - run: make baseline
       - run: make ci-template
+      - run: make api-example

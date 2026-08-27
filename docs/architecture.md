@@ -8,7 +8,8 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
   comparison exports, single-answer rubric CSV exports, JSON policies, and baseline files with
   bounded file-size checks.
 - `rubrictrace.models` defines records, policy controls, issues, reports, and severity ordering.
-- `rubrictrace.scanner` runs deterministic detectors over normalized records.
+- `rubrictrace.scanner` runs deterministic detectors over normalized records and accepts typed
+  custom detector hooks for embedding-specific checks.
 - `rubrictrace.metrics` summarizes repeated-judge agreement and threshold sensitivity.
 - `rubrictrace.report` renders text, JSON, compact CI, Markdown summary, and SARIF reports.
 - `rubrictrace.ci` renders deterministic GitHub Actions audit steps for advisory summaries and
@@ -23,11 +24,15 @@ RubricTrace is a dependency-light Python package with a CLI and a small typed AP
 2. A `Policy` is created from defaults, an optional policy file, reviewed baseline fingerprints,
    and CLI overrides.
 3. The scanner groups records by stable case, candidate, rubric, and pairwise identifiers.
-4. Enabled detectors emit `Issue` values with stable fingerprints.
-5. Severity overrides are applied before reviewed-fingerprint suppressions partition findings into
+4. Enabled built-in detectors emit `Issue` values with stable fingerprints.
+5. Optional custom detectors receive a `DetectorContext` containing normalized records and the
+   resolved policy. They may return additional `Issue` values using the context issue factory.
+6. Custom detector exceptions are contained as sanitized `extension_error` findings by default, or
+   re-raised when `raise_custom_detector_errors=True` is supplied.
+7. Severity overrides are applied before reviewed-fingerprint suppressions partition findings into
    active and suppressed sets.
-6. The report renderer emits text, JSON, compact CI, Markdown summary, or SARIF output.
-7. The CLI exits with `1` only when an active finding meets or exceeds the configured severity
+8. The report renderer emits text, JSON, compact CI, Markdown summary, or SARIF output.
+9. The CLI exits with `1` only when an active finding meets or exceeds the configured severity
    threshold.
 
 The metrics command uses the same normalized records and policy thresholds, but emits descriptive
@@ -40,6 +45,7 @@ detector-level precision, recall, and F1. False positives carry review notes wit
 fingerprint, detector message, severity, and compact structured evidence so a suite maintainer can
 decide whether labels, thresholds, or detector behavior need adjustment.
 
+JSON report output includes `schema_version` so downstream integrations can pin contract checks.
 SARIF report output includes active findings as SARIF results, detector names as rule IDs, stable
 RubricTrace fingerprints in `partialFingerprints`, run-level counts, and the audit input path as a
 physical location when the CLI can provide it. Suppressed findings are not emitted as results, but
@@ -69,6 +75,14 @@ only removes reviewed findings from active counts and failure decisions.
 
 The scanner avoids stochastic behavior and does not call external models. Future adapters should
 normalize external exports into the same `JudgeRecord` model before scanning.
+
+Embedding code can provide custom detectors to `audit_records`. A custom detector is a callable
+that accepts `DetectorContext` and returns zero or more `Issue` values. The context's `issue()`
+helper uses the same fingerprint inputs as built-in detectors: detector name, case ID, candidate
+ID, pair ID, rubric, and compact structured evidence. Custom findings are sorted, suppressed by
+fingerprint, rendered, and included in failure decisions the same way as built-in findings.
+Extension failures do not include exception messages in reports; they include only a safe detector
+label and exception class so private rationale or judgment text is not echoed accidentally.
 
 ## Metrics Design
 

@@ -23,6 +23,7 @@ FAILING_VERDICTS = {"fail", "failed", "reject", "rejected", "no", "lose", "loser
 FIRST_POSITIONS = {"first", "left", "a", "1"}
 SECOND_POSITIONS = {"second", "right", "b", "2"}
 FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+REPORT_SCHEMA_VERSION = 1
 
 
 class ModelError(ValueError):
@@ -314,6 +315,7 @@ class AuditReport:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": REPORT_SCHEMA_VERSION,
             "records_scanned": self.records_scanned,
             "issue_count": self.issue_count,
             "suppressed_issue_count": self.suppressed_issue_count,

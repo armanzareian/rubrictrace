@@ -11,8 +11,15 @@ from .io import (
     load_rubric_csv_records,
 )
 from .metrics import render_metrics, summarize_records
-from .models import AuditReport, Issue, JudgeRecord, Policy, RubricThresholds
-from .scanner import audit_records
+from .models import (
+    REPORT_SCHEMA_VERSION,
+    AuditReport,
+    Issue,
+    JudgeRecord,
+    Policy,
+    RubricThresholds,
+)
+from .scanner import CustomDetector, CustomDetectorError, DetectorContext, audit_records
 
 __all__ = [
     "AuditReport",
@@ -21,7 +28,11 @@ __all__ = [
     "Issue",
     "JudgeRecord",
     "Policy",
+    "REPORT_SCHEMA_VERSION",
     "RubricThresholds",
+    "CustomDetector",
+    "CustomDetectorError",
+    "DetectorContext",
     "audit_records",
     "load_baseline",
     "load_csv_records",

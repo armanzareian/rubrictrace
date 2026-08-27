@@ -6,7 +6,7 @@ import unittest
 from rubrictrace.models import AuditReport, Issue, JudgeRecord, Policy, RubricThresholds
 from rubrictrace.metrics import render_metrics, summarize_records
 from rubrictrace.report import render_report
-from rubrictrace.scanner import audit_records
+from rubrictrace.scanner import DetectorContext, audit_records
 
 
 class ScannerTests(unittest.TestCase):
@@ -92,6 +92,120 @@ class ScannerTests(unittest.TestCase):
             issue.detector for issue in strict_report.issues
         })
         self.assertEqual(0, relaxed_report.issue_count)
+
+    def test_custom_detector_can_emit_stable_issue_from_context(self) -> None:
+        record = JudgeRecord(
+            case_id="case-extension-1",
+            candidate_id="answer-custom",
+            run_id="judge-run-1",
+            rubric="groundedness",
+            score=4.0,
+            rationale="Grounded answer with citations.",
+            evidence=("doc-1",),
+            metadata={"source_count": 1},
+        )
+
+        def low_source_count(context: DetectorContext) -> tuple[Issue, ...]:
+            return (
+                context.issue(
+                    detector="low_source_count",
+                    severity="low",
+                    record=context.records[0],
+                    message="answer cites fewer than two sources",
+                    evidence={"source_count": context.records[0].metadata["source_count"]},
+                ),
+            )
+
+        try:
+            report = audit_records(
+                (record,),
+                Policy(fail_on="high"),
+                custom_detectors=(low_source_count,),
+            )
+        except TypeError:
+            self.fail("audit_records should accept custom_detectors")
+
+        self.assertEqual(1, report.issue_count)
+        issue = report.issues[0]
+        self.assertEqual("low_source_count", issue.detector)
+        self.assertEqual("low", issue.severity)
+        self.assertEqual("case-extension-1", issue.case_id)
+        self.assertEqual("answer-custom", issue.candidate_id)
+        self.assertEqual({"source_count": 1}, issue.evidence)
+        self.assertRegex(issue.fingerprint, r"^[0-9a-f]{16}$")
+        self.assertFalse(report.failed())
+
+        second = audit_records(
+            (record,),
+            Policy(fail_on="high"),
+            custom_detectors=(low_source_count,),
+        )
+        self.assertEqual(issue.fingerprint, second.issues[0].fingerprint)
+
+    def test_custom_detector_errors_are_sanitized_and_contained(self) -> None:
+        record = JudgeRecord(
+            case_id="case-extension-2",
+            candidate_id="answer-custom",
+            run_id="judge-run-1",
+            rubric="safety",
+            score=5.0,
+            rationale="Safe answer with enough explanation.",
+            evidence=("policy-1",),
+        )
+
+        def broken_detector(context: DetectorContext) -> tuple[Issue, ...]:
+            raise RuntimeError("secret rationale should not be echoed")
+
+        try:
+            report = audit_records(
+                (record,),
+                Policy(fail_on="high"),
+                custom_detectors=(broken_detector,),
+            )
+        except TypeError:
+            self.fail("audit_records should accept custom_detectors")
+
+        self.assertEqual(1, report.issue_count)
+        issue = report.issues[0]
+        self.assertEqual("extension_error", issue.detector)
+        self.assertEqual("medium", issue.severity)
+        self.assertEqual("__extensions__", issue.case_id)
+        self.assertEqual("custom_detector", issue.rubric)
+        self.assertEqual(
+            {"detector": "broken_detector", "error_type": "RuntimeError"},
+            issue.evidence,
+        )
+        self.assertIn("custom detector failed", issue.message)
+        self.assertNotIn("secret rationale", json.dumps(issue.to_dict()))
+        self.assertFalse(report.failed())
+
+    def test_custom_detector_errors_can_be_configured_to_raise(self) -> None:
+        record = JudgeRecord(
+            case_id="case-extension-3",
+            candidate_id="answer-custom",
+            run_id="judge-run-1",
+            rubric="style",
+            score=5.0,
+            rationale="Clear answer with concise structure.",
+            evidence=("style-guide",),
+        )
+
+        def broken_detector(context: DetectorContext) -> tuple[Issue, ...]:
+            raise RuntimeError("private details")
+
+        try:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "custom detector 'broken_detector' failed",
+            ):
+                audit_records(
+                    (record,),
+                    Policy(),
+                    custom_detectors=(broken_detector,),
+                    raise_custom_detector_errors=True,
+                )
+        except TypeError:
+            self.fail("audit_records should accept raise_custom_detector_errors")
 
     def test_fingerprints_are_stable(self) -> None:
         records = (
@@ -245,6 +359,58 @@ class ScannerTests(unittest.TestCase):
         self.assertIn(fingerprints[0], markdown)
         self.assertIn(fingerprints[0], sarif)
         self.assertIn(fingerprints[0], rendered_json)
+
+    def test_report_json_contract_includes_schema_version_and_issue_shape(self) -> None:
+        report = AuditReport(
+            records_scanned=1,
+            issues=(
+                Issue(
+                    detector="missing_evidence",
+                    severity="medium",
+                    case_id="case-contract-1",
+                    candidate_id="answer-contract",
+                    rubric="safety",
+                    message="judgment record is missing evidence handles",
+                    fingerprint="0123456789abcdef",
+                    evidence={"run_id": "judge-run-1"},
+                ),
+            ),
+            policy=Policy(fail_on="medium"),
+        )
+
+        payload = report.to_dict()
+
+        self.assertIn("schema_version", payload)
+        self.assertEqual(1, payload["schema_version"])
+        self.assertEqual(
+            [
+                "counts_by_severity",
+                "failed",
+                "issue_count",
+                "issues",
+                "policy",
+                "records_scanned",
+                "schema_version",
+                "suppressed_issue_count",
+                "suppressed_issues",
+                "total_issue_count",
+            ],
+            sorted(payload),
+        )
+        self.assertEqual(
+            [
+                "candidate_id",
+                "case_id",
+                "detector",
+                "evidence",
+                "fingerprint",
+                "message",
+                "pair_id",
+                "rubric",
+                "severity",
+            ],
+            sorted(payload["issues"][0]),
+        )
 
     def test_markdown_report_escapes_table_cells(self) -> None:
         report = AuditReport(

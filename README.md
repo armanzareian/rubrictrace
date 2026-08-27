@@ -412,12 +412,16 @@ make eval
 make metrics
 make sarif
 make baseline
+make ci-template
+make api-example
 ```
 
 The project is intentionally dependency-light. Optional `ruff` and `mypy` configuration is included
 for teams that want stricter local checks.
 
 ## Python API
+
+Audit reports expose a stable JSON contract with `schema_version` for downstream checks:
 
 ```python
 from pathlib import Path
@@ -433,6 +437,9 @@ report = audit_records(records, policy)
 
 for issue in report.issues:
     print(issue.detector, issue.severity, issue.fingerprint)
+
+payload = report.to_dict()
+print(payload["schema_version"], payload["issue_count"])
 
 summary = summarize_records(records, policy)
 print(summary["threshold_sensitivity"]["score_instability"])
@@ -476,6 +483,43 @@ from rubrictrace import load_rubric_csv_records
 
 records = load_rubric_csv_records(Path("examples/judgments/rubric_safety.csv"))
 ```
+
+Custom detectors can add project-specific findings while reusing RubricTrace's stable issue
+fingerprint shape:
+
+```python
+from pathlib import Path
+
+from rubrictrace import DetectorContext, Issue, Policy, audit_records, load_records
+
+
+def low_evidence_count(context: DetectorContext) -> tuple[Issue, ...]:
+    issues: list[Issue] = []
+    for record in context.records:
+        if len(record.evidence) < 2:
+            issues.append(
+                context.issue(
+                    detector="low_evidence_count",
+                    severity="low",
+                    record=record,
+                    message="judgment cites fewer than two evidence handles",
+                    evidence={"run_id": record.run_id, "evidence_count": len(record.evidence)},
+                )
+            )
+    return tuple(issues)
+
+
+records = load_records(Path("examples/judgments/records.jsonl"))
+report = audit_records(
+    records,
+    Policy(fail_on="critical"),
+    custom_detectors=(low_evidence_count,),
+)
+```
+
+By default, exceptions raised by custom detectors become sanitized `extension_error` findings with
+the detector name and exception type. Pass `raise_custom_detector_errors=True` to `audit_records`
+when embedding code should fail fast instead.
 
 ## Limitations
 

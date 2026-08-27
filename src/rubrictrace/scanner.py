@@ -3,20 +3,76 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from statistics import mean
-from typing import Any, Iterable
+from typing import Any, Protocol
 
 from .models import (
     AuditReport,
     Issue,
     JudgeRecord,
     Policy,
+    SEVERITY_RANK,
     position_bucket,
     verdict_bucket,
 )
 
 
-def audit_records(records: Iterable[JudgeRecord], policy: Policy | None = None) -> AuditReport:
+class CustomDetectorError(RuntimeError):
+    """Raised when a custom detector fails and fail-fast handling is enabled."""
+
+
+@dataclass(frozen=True)
+class DetectorContext:
+    """Read-only context passed to custom issue detectors."""
+
+    records: tuple[JudgeRecord, ...]
+    policy: Policy
+
+    def issue(
+        self,
+        *,
+        detector: str,
+        severity: str,
+        record: JudgeRecord,
+        message: str,
+        evidence: Mapping[str, Any] | None = None,
+        pair_id: str | None = None,
+    ) -> Issue:
+        """Build an issue with the same stable fingerprint contract as built-in detectors."""
+
+        normalized_detector = _custom_issue_label(detector, "detector")
+        normalized_severity = severity.strip().lower()
+        if normalized_severity not in SEVERITY_RANK:
+            raise ValueError("severity must be low, medium, high, or critical")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("message must be a non-empty string")
+        return _issue(
+            detector=normalized_detector,
+            severity=normalized_severity,
+            record=record,
+            message=message.strip(),
+            evidence=dict(evidence or {}),
+            pair_id=pair_id,
+        )
+
+
+class CustomDetector(Protocol):
+    """Callable extension hook for project-specific audit checks."""
+
+    def __call__(self, context: DetectorContext) -> Iterable[Issue]:
+        """Return zero or more custom issues for the supplied scan context."""
+        ...
+
+
+def audit_records(
+    records: Iterable[JudgeRecord],
+    policy: Policy | None = None,
+    *,
+    custom_detectors: Iterable[CustomDetector] = (),
+    raise_custom_detector_errors: bool = False,
+) -> AuditReport:
     resolved_policy = Policy() if policy is None else policy
     record_tuple = tuple(records)
     issues: list[Issue] = []
@@ -42,6 +98,14 @@ def audit_records(records: Iterable[JudgeRecord], policy: Policy | None = None) 
         if issue is not None:
             issues.append(issue)
 
+    issues.extend(
+        _custom_detector_issues(
+            DetectorContext(records=record_tuple, policy=resolved_policy),
+            tuple(custom_detectors),
+            raise_errors=raise_custom_detector_errors,
+        )
+    )
+
     sorted_issues = sorted(
         issues,
         key=lambda issue: (
@@ -60,6 +124,29 @@ def audit_records(records: Iterable[JudgeRecord], policy: Policy | None = None) 
         policy=resolved_policy,
         suppressed_issues=tuple(suppressed_issues),
     )
+
+
+def _custom_detector_issues(
+    context: DetectorContext,
+    custom_detectors: tuple[CustomDetector, ...],
+    *,
+    raise_errors: bool,
+) -> list[Issue]:
+    issues: list[Issue] = []
+    for custom_detector in custom_detectors:
+        detector_name = _detector_callable_name(custom_detector)
+        try:
+            for index, issue in enumerate(custom_detector(context)):
+                if not isinstance(issue, Issue):
+                    raise TypeError(
+                        f"custom detector {detector_name!r} returned a non-Issue at index {index}"
+                    )
+                issues.append(issue)
+        except Exception as exc:
+            if raise_errors:
+                raise CustomDetectorError(f"custom detector {detector_name!r} failed") from exc
+            issues.append(_extension_error_issue(detector_name, exc, context.policy))
+    return issues
 
 
 def _single_record_issues(record: JudgeRecord, policy: Policy) -> list[Issue]:
@@ -224,14 +311,17 @@ def _issue(
     record: JudgeRecord,
     message: str,
     evidence: dict[str, Any],
+    pair_id: str | None = None,
 ) -> Issue:
-    pair_id = record.pair_id if detector == "position_bias" else None
+    resolved_pair_id = pair_id
+    if resolved_pair_id is None and detector == "position_bias":
+        resolved_pair_id = record.pair_id
     fingerprint = _fingerprint(
         {
             "detector": detector,
             "case_id": record.case_id,
             "candidate_id": record.candidate_id,
-            "pair_id": pair_id,
+            "pair_id": resolved_pair_id,
             "rubric": record.rubric,
             "evidence": evidence,
         }
@@ -241,12 +331,54 @@ def _issue(
         severity=severity,
         case_id=record.case_id,
         candidate_id=record.candidate_id,
-        pair_id=pair_id,
+        pair_id=resolved_pair_id,
         rubric=record.rubric,
         message=message,
         evidence=evidence,
         fingerprint=fingerprint,
     )
+
+
+def _extension_error_issue(detector_name: str, exc: Exception, policy: Policy) -> Issue:
+    error_type = exc.__class__.__name__
+    evidence = {"detector": detector_name, "error_type": error_type}
+    return Issue(
+        detector="extension_error",
+        severity=policy.severity_for("extension_error", "medium"),
+        case_id="__extensions__",
+        candidate_id=None,
+        pair_id=None,
+        rubric="custom_detector",
+        message="custom detector failed; built-in detector results are still available",
+        evidence=evidence,
+        fingerprint=_fingerprint(
+            {
+                "detector": "extension_error",
+                "case_id": "__extensions__",
+                "candidate_id": None,
+                "pair_id": None,
+                "rubric": "custom_detector",
+                "evidence": evidence,
+            }
+        ),
+    )
+
+
+def _detector_callable_name(custom_detector: CustomDetector) -> str:
+    raw_name = getattr(custom_detector, "__name__", None)
+    if not isinstance(raw_name, str) or not raw_name.strip():
+        raw_name = custom_detector.__class__.__name__
+    return _custom_issue_label(raw_name, "custom_detector")
+
+
+def _custom_issue_label(value: str, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:-")
+    label = "".join(character for character in value.strip() if character in allowed)[:80]
+    if not label:
+        raise ValueError(f"{field_name} must contain at least one safe label character")
+    return label
 
 
 def _fingerprint(parts: dict[str, Any]) -> str:

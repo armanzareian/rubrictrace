@@ -1,4 +1,4 @@
-.PHONY: test quality demo eval metrics sarif baseline ci-template
+.PHONY: test quality demo eval metrics sarif baseline ci-template api-example
 
 PYTHON ?= python3
 
@@ -45,3 +45,6 @@ ci-template:
 		--baseline examples/judgments/baseline.json \
 		--mode both \
 		--strict-fail-on critical
+
+api-example:
+	PYTHONPATH=src $(PYTHON) examples/custom_detector.py
